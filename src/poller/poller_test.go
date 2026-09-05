@@ -43,10 +43,10 @@ func TestTickAdoptsResetDateOnFirstEverPollWithoutTreatingItAsAWipe(t *testing.T
 	p := &Poller{
 		Conn:  conn,
 		Clock: func() time.Time { return now },
-		FetchRoot: func(string) (spacetraders.RootInfo, error) {
+		FetchRoot: func() (spacetraders.RootInfo, error) {
 			return spacetraders.RootInfo{ResetDate: mustParse("2026-08-01T00:00:00Z")}, nil
 		},
-		Register: func(string, string, string, string, string) (spacetraders.RegisterResult, error) {
+		Register: func(accountToken, symbol, faction, email string) (spacetraders.RegisterResult, error) {
 			registerCalled = true
 			return spacetraders.RegisterResult{}, nil
 		},
@@ -81,10 +81,10 @@ func TestTickReregistersOnAnObservedResetDateChange(t *testing.T) {
 	p := &Poller{
 		Conn:  conn,
 		Clock: func() time.Time { return now },
-		FetchRoot: func(string) (spacetraders.RootInfo, error) {
+		FetchRoot: func() (spacetraders.RootInfo, error) {
 			return spacetraders.RootInfo{ResetDate: mustParse("2026-08-22T00:00:00Z")}, nil
 		},
-		Register: func(accountToken, symbol, faction, email, priority string) (spacetraders.RegisterResult, error) {
+		Register: func(accountToken, symbol, faction, email string) (spacetraders.RegisterResult, error) {
 			registeredWith.symbol, registeredWith.faction, registeredWith.email = symbol, faction, email
 			return spacetraders.RegisterResult{AgentToken: "new-token", AgentSymbol: symbol}, nil
 		},
@@ -121,10 +121,10 @@ func TestTickMarksTokenExpiredOnlyWhenForcedAndResetDateUnchanged(t *testing.T) 
 	p := &Poller{
 		Conn:  conn,
 		Clock: func() time.Time { return now },
-		FetchRoot: func(string) (spacetraders.RootInfo, error) {
+		FetchRoot: func() (spacetraders.RootInfo, error) {
 			return spacetraders.RootInfo{ResetDate: mustParse("2026-08-01T00:00:00Z")}, nil
 		},
-		Register: func(string, string, string, string, string) (spacetraders.RegisterResult, error) {
+		Register: func(accountToken, symbol, faction, email string) (spacetraders.RegisterResult, error) {
 			t.Fatal("should not re-register")
 			return spacetraders.RegisterResult{}, nil
 		},
@@ -161,8 +161,8 @@ func TestPollNowRateLimitsForcedPolls(t *testing.T) {
 	p := &Poller{
 		Conn:      conn,
 		Clock:     func() time.Time { return now },
-		FetchRoot: func(string) (spacetraders.RootInfo, error) { calls++; return spacetraders.RootInfo{}, nil },
-		Register: func(string, string, string, string, string) (spacetraders.RegisterResult, error) {
+		FetchRoot: func() (spacetraders.RootInfo, error) { calls++; return spacetraders.RootInfo{}, nil },
+		Register: func(accountToken, symbol, faction, email string) (spacetraders.RegisterResult, error) {
 			return spacetraders.RegisterResult{}, nil
 		},
 	}
@@ -194,8 +194,8 @@ func TestTickIsANoOpWhenUnconfigured(t *testing.T) {
 	p := &Poller{
 		Conn:      conn,
 		Clock:     func() time.Time { return now },
-		FetchRoot: func(string) (spacetraders.RootInfo, error) { called = true; return spacetraders.RootInfo{}, nil },
-		Register: func(string, string, string, string, string) (spacetraders.RegisterResult, error) {
+		FetchRoot: func() (spacetraders.RootInfo, error) { called = true; return spacetraders.RootInfo{}, nil },
+		Register: func(accountToken, symbol, faction, email string) (spacetraders.RegisterResult, error) {
 			return spacetraders.RegisterResult{}, nil
 		},
 	}

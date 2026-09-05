@@ -25,8 +25,8 @@ func newTestRouter(t *testing.T) (http.Handler, *sql.DB, *poller.Poller) {
 	p := &poller.Poller{
 		Conn:      conn,
 		Clock:     time.Now,
-		FetchRoot: func(string) (spacetraders.RootInfo, error) { return spacetraders.RootInfo{}, nil },
-		Register: func(accountToken, symbol, faction, email, priority string) (spacetraders.RegisterResult, error) {
+		FetchRoot: func() (spacetraders.RootInfo, error) { return spacetraders.RootInfo{}, nil },
+		Register: func(accountToken, symbol, faction, email string) (spacetraders.RegisterResult, error) {
 			return spacetraders.RegisterResult{AgentToken: "minted-token", AgentSymbol: symbol, Credits: 175000}, nil
 		},
 	}

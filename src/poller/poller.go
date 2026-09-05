@@ -24,8 +24,8 @@ const forcedPollCooldown = 10 * time.Second
 
 type Poller struct {
 	Conn      *sql.DB
-	FetchRoot func(priority string) (spacetraders.RootInfo, error)
-	Register  func(accountToken, symbol, faction, email, priority string) (spacetraders.RegisterResult, error)
+	FetchRoot func() (spacetraders.RootInfo, error)
+	Register  func(accountToken, symbol, faction, email string) (spacetraders.RegisterResult, error)
 	Clock     func() time.Time
 
 	mu         sync.Mutex
@@ -103,7 +103,7 @@ func (p *Poller) Tick(afterUnauthorized bool) error {
 		return nil
 	}
 
-	root, err := p.FetchRoot("background")
+	root, err := p.FetchRoot()
 	if err != nil {
 		return err
 	}
@@ -138,7 +138,7 @@ func (p *Poller) Tick(afterUnauthorized bool) error {
 // so the event log and metrics keep correlating across a reset instead of
 // silently starting over under a new agent symbol.
 func (p *Poller) reregister(cred db.Credential, now time.Time) error {
-	result, err := p.Register(cred.AccountToken, cred.AgentSymbol, cred.Faction, cred.Email, "background")
+	result, err := p.Register(cred.AccountToken, cred.AgentSymbol, cred.Faction, cred.Email)
 	if err != nil {
 		return err
 	}

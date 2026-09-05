@@ -194,7 +194,7 @@ func (h *handlers) registerAgent(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	result, err := h.poller.Register(body.AccountToken, body.Symbol, body.Faction, body.Email, "interactive")
+	result, err := h.poller.Register(body.AccountToken, body.Symbol, body.Faction, body.Email)
 	if !writeIfError(w, err) {
 		return
 	}
