@@ -53,12 +53,11 @@ func parseFlexibleTime(s string) time.Time {
 // GetRoot calls the one unauthenticated SpaceTraders endpoint — no
 // Authorization header, since resetDate/serverResets need no credential at
 // all (auth-design.md decision 7).
-func GetRoot(priority string) (RootInfo, error) {
+func GetRoot() (RootInfo, error) {
 	req, err := http.NewRequest(http.MethodGet, gatewayBaseURL()+"/", nil)
 	if err != nil {
 		return RootInfo{}, err
 	}
-	setPriority(req, priority)
 
 	body, status, err := do(req)
 	if err != nil {
@@ -105,7 +104,7 @@ type rawRegisterResponse struct {
 // only operation the account token exists for (auth-design.md decision 6/7).
 // email reserves the call sign across a reset, so pass it whenever a prior
 // registration recorded one.
-func Register(accountToken, symbol, faction, email, priority string) (RegisterResult, error) {
+func Register(accountToken, symbol, faction, email string) (RegisterResult, error) {
 	payload, err := json.Marshal(registerRequestBody{Symbol: symbol, Faction: faction, Email: email})
 	if err != nil {
 		return RegisterResult{}, err
@@ -117,7 +116,6 @@ func Register(accountToken, symbol, faction, email, priority string) (RegisterRe
 	}
 	req.Header.Set("Authorization", "Bearer "+accountToken)
 	req.Header.Set("Content-Type", "application/json")
-	setPriority(req, priority)
 
 	body, status, err := do(req)
 	if err != nil {
@@ -138,19 +136,13 @@ func Register(accountToken, symbol, faction, email, priority string) (RegisterRe
 	}, nil
 }
 
-// setPriority forwards the caller's priority declaration through to
-// st-gateway's priority queue — anything other than exactly "interactive"
-// degrades to "background", matching every sibling client.
-func setPriority(req *http.Request, priority string) {
-	if priority == "interactive" {
-		req.Header.Set("X-Priority", "interactive")
-	} else {
-		req.Header.Set("X-Priority", "background")
-	}
-}
+// httpClient is shared and bounded: a gateway that never answers would
+// otherwise pin the poller's Tick — and, through PollNow, st-gateway's own
+// 401-refresh path — indefinitely. 30s matches the sibling clients.
+var httpClient = &http.Client{Timeout: 30 * time.Second}
 
 func do(req *http.Request) ([]byte, int, error) {
-	client := &http.Client{}
+	client := httpClient
 	resp, err := client.Do(req)
 	if err != nil {
 		return nil, 0, err
