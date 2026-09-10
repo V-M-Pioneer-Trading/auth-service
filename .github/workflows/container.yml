@@ -1,8 +1,10 @@
 name: container
 
 on:
+  # No branch filter: a pull request stacked on another branch needs the same
+  # checks as one targeting main. Filtering to main meant a stacked PR ran
+  # nothing at all and looked green by default.
   pull_request:
-    branches: [main]
   push:
     branches: [main]
     tags: ["v*"]
@@ -13,8 +15,9 @@ permissions:
   id-token: write
 
 jobs:
+  # Runs on pull requests *and* on push: previously a direct push to main
+  # skipped the tests entirely and went straight to build-and-deploy.
   test:
-    if: github.event_name == 'pull_request'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -35,6 +38,7 @@ jobs:
 
   docker:
     if: github.event_name == 'push'
+    needs: test
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
