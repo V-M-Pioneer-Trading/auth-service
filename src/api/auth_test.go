@@ -14,7 +14,9 @@ import (
 	"vnm/auth-service/spacetraders"
 )
 
-func newTestRouter(t *testing.T) (http.Handler, *sql.DB, *poller.Poller) {
+// newTestDeps is the in-memory database and stubbed poller every router in
+// this package's tests is built on.
+func newTestDeps(t *testing.T) (*sql.DB, *poller.Poller) {
 	t.Helper()
 	conn, err := db.OpenInMemory()
 	if err != nil {
@@ -22,7 +24,7 @@ func newTestRouter(t *testing.T) (http.Handler, *sql.DB, *poller.Poller) {
 	}
 	t.Cleanup(func() { conn.Close() })
 
-	p := &poller.Poller{
+	return conn, &poller.Poller{
 		Conn:      conn,
 		Clock:     time.Now,
 		FetchRoot: func() (spacetraders.RootInfo, error) { return spacetraders.RootInfo{}, nil },
@@ -30,8 +32,23 @@ func newTestRouter(t *testing.T) (http.Handler, *sql.DB, *poller.Poller) {
 			return spacetraders.RegisterResult{AgentToken: "minted-token", AgentSymbol: symbol, Credits: 175000}, nil
 		},
 	}
+}
 
-	router, err := SetUpRouter(Config{Conn: conn, Auth: testAuthConfig(), SharedSecret: testSharedSecret, Poller: p})
+func newTestRouter(t *testing.T) (http.Handler, *sql.DB, *poller.Poller) {
+	return newTestRouterWithIntrospectionSecret(t, testIntrospectionSecret)
+}
+
+func newTestRouterWithIntrospectionSecret(t *testing.T, introspectionSecret string) (http.Handler, *sql.DB, *poller.Poller) {
+	t.Helper()
+	conn, p := newTestDeps(t)
+
+	router, err := SetUpRouter(Config{
+		Conn:                conn,
+		Auth:                testAuthConfig(),
+		SharedSecret:        testSharedSecret,
+		IntrospectionSecret: introspectionSecret,
+		Poller:              p,
+	})
 	if err != nil {
 		t.Fatalf("SetUpRouter: %v", err)
 	}
@@ -174,6 +191,53 @@ func TestRestoreTokenRequiresAnExistingCredential(t *testing.T) {
 	if rec.Code != http.StatusConflict {
 		t.Fatalf("expected 409 restoring a token onto an unconfigured service, got %d (body: %s)", rec.Code, rec.Body.String())
 	}
+}
+
+// TestVaultRoutesShareTheIntrospectionVerifier proves decision 21's
+// "one verification code path" from outside: every token the introspection
+// route calls inactive must also be refused by the vault's two routes, with
+// their own unchanged 401 sentence. If someone reintroduces a second
+// jwt.Parse in requireScope, one of these two halves drifts and this fails.
+func TestVaultRoutesShareTheIntrospectionVerifier(t *testing.T) {
+	router, _, _ := newTestRouter(t)
+
+	tokens := map[string]string{
+		"alg confusion: HS256 signed with the public key": signHS256WithPublicKey(testTokenOptions{scopes: []string{SCOPEAgentReset}}),
+		"alg confusion: alg=none":                         signAlgNone(testTokenOptions{scopes: []string{SCOPEAgentReset}}),
+		"expired beyond the leeway":                       signTestToken(testPrivateKey, testTokenOptions{scopes: []string{SCOPEAgentReset}, expiresInSeconds: -600}),
+		"nbf beyond the leeway":                           signTestToken(testPrivateKey, testTokenOptions{scopes: []string{SCOPEAgentReset}, notBeforeSeconds: 600}),
+		"foreign signature":                               signTestToken(foreignPrivateKey, testTokenOptions{scopes: []string{SCOPEAgentReset}}),
+	}
+
+	for name, token := range tokens {
+		t.Run(name, func(t *testing.T) {
+			assertInactive(t, introspect(t, router, token, testIntrospectionSecret, true))
+
+			rec := doRequest(t, router, http.MethodPost, "/api/auth/v1/register", "Bearer "+token, `{}`)
+			if rec.Code != http.StatusUnauthorized {
+				t.Fatalf("the vault route accepted a token introspection calls inactive: got %d (body: %s)", rec.Code, rec.Body.String())
+			}
+			if !strings.Contains(rec.Body.String(), "invalid or expired session") {
+				t.Errorf("the vault route's 401 sentence changed: %s", rec.Body.String())
+			}
+		})
+	}
+
+	// And the mirror: a token introspection calls active, carrying the scope,
+	// still gets through the vault route unchanged.
+	t.Run("an active scoped token still passes the vault route", func(t *testing.T) {
+		token := signTestToken(testPrivateKey, testTokenOptions{scopes: []string{SCOPEAgentReset}})
+		body := decodeIntrospection(t, introspect(t, router, token, testIntrospectionSecret, true))
+		if body["active"] != true {
+			t.Fatalf("expected active, got %v", body)
+		}
+		// 409 rather than 200: there is no credential to restore onto yet,
+		// which is past the auth guard and is the pre-existing behaviour.
+		rec := doRequest(t, router, http.MethodPost, "/api/auth/v1/agent-token", "Bearer "+token, `{"agentToken":"t"}`)
+		if rec.Code != http.StatusConflict {
+			t.Fatalf("expected the request to reach the handler (409), got %d (body: %s)", rec.Code, rec.Body.String())
+		}
+	})
 }
 
 func TestRequireClerkJWTKeyFailsClosed(t *testing.T) {

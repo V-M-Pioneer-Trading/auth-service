@@ -10,6 +10,8 @@ import (
 	"crypto/rand"
 	"crypto/rsa"
 	"crypto/x509"
+	"encoding/base64"
+	"encoding/json"
 	"encoding/pem"
 	"time"
 
@@ -45,9 +47,28 @@ type testTokenOptions struct {
 	sub              string
 	expiresInSeconds int
 	issuer           string
+
+	// scopeRaw, when set, is written to the `scope` claim verbatim instead of
+	// joining `scopes`. The fixture carries a scope string with a double
+	// space, a tab and a trailing space, and the center must return it
+	// untouched — which a join can't express.
+	scopeRaw string
+	// scopeArray writes `scope` as a JSON array, the other shape Clerk can
+	// produce. The contract says the center answers with a space-delimited
+	// string either way.
+	scopeArray []string
+	// expiresAtUnix, when non-zero, pins `exp` absolutely (the fixture's
+	// 4102444800) rather than relative to now.
+	expiresAtUnix int64
+	// notBeforeSeconds offsets `nbf` from now; positive is a token not yet
+	// valid. Zero omits the claim.
+	notBeforeSeconds int
+	// extraClaims land in the token and must never come back out of
+	// introspection — the response carries five fields and no more.
+	extraClaims map[string]interface{}
 }
 
-func signTestToken(key *rsa.PrivateKey, opts testTokenOptions) string {
+func testTokenClaims(opts testTokenOptions) jwt.MapClaims {
 	if opts.sub == "" {
 		opts.sub = "user_2TestOperator"
 	}
@@ -68,16 +89,66 @@ func signTestToken(key *rsa.PrivateKey, opts testTokenOptions) string {
 		"iat":   time.Now().Unix(),
 		"exp":   time.Now().Add(time.Duration(opts.expiresInSeconds) * time.Second).Unix(),
 	}
+	if opts.scopeRaw != "" {
+		claims["scope"] = opts.scopeRaw
+	}
+	if opts.scopeArray != nil {
+		arr := make([]interface{}, 0, len(opts.scopeArray))
+		for _, s := range opts.scopeArray {
+			arr = append(arr, s)
+		}
+		claims["scope"] = arr
+	}
+	if opts.expiresAtUnix != 0 {
+		claims["exp"] = opts.expiresAtUnix
+	}
+	if opts.notBeforeSeconds != 0 {
+		claims["nbf"] = time.Now().Add(time.Duration(opts.notBeforeSeconds) * time.Second).Unix()
+	}
 	if opts.issuer != "" {
 		claims["iss"] = opts.issuer
 	}
+	for k, val := range opts.extraClaims {
+		claims[k] = val
+	}
+	return claims
+}
 
-	token := jwt.NewWithClaims(jwt.SigningMethodRS256, claims)
+func signTestToken(key *rsa.PrivateKey, opts testTokenOptions) string {
+	token := jwt.NewWithClaims(jwt.SigningMethodRS256, testTokenClaims(opts))
 	signed, err := token.SignedString(key)
 	if err != nil {
 		panic(err)
 	}
 	return signed
+}
+
+// signHS256WithPublicKey is the classic algorithm-confusion attack: the
+// attacker knows the RSA PUBLIC key (it is public) and signs an HMAC token
+// with its PEM bytes as the shared secret. A verifier that trusts the header's
+// `alg` and hands the key function's result to HMAC accepts it. Ours pins
+// RS256, so the token must never verify.
+func signHS256WithPublicKey(opts testTokenOptions) string {
+	token := jwt.NewWithClaims(jwt.SigningMethodHS256, testTokenClaims(opts))
+	signed, err := token.SignedString([]byte(testClerkPublicKeyPEM))
+	if err != nil {
+		panic(err)
+	}
+	return signed
+}
+
+// signAlgNone builds an unsigned `{"alg":"none"}` token by hand. golang-jwt
+// refuses to produce one through the normal API, which is the point.
+func signAlgNone(opts testTokenOptions) string {
+	enc := func(v interface{}) string {
+		raw, err := json.Marshal(v)
+		if err != nil {
+			panic(err)
+		}
+		return base64.RawURLEncoding.EncodeToString(raw)
+	}
+	header := enc(map[string]string{"alg": "none", "typ": "JWT"})
+	return header + "." + enc(testTokenClaims(opts)) + "."
 }
 
 // bearer returns a ready-to-use Authorization header value for an operator

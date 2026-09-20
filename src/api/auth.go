@@ -54,26 +54,6 @@ func bearerFrom(r *http.Request) string {
 	return parts[1]
 }
 
-// scopesFrom accepts the `scope` claim as either a space-delimited string
-// (the OAuth convention Clerk's default session token uses) or an array, so a
-// caller is never locked out by a formatting choice made in a dashboard.
-func scopesFrom(claims jwt.MapClaims) []string {
-	switch v := claims["scope"].(type) {
-	case string:
-		return strings.Fields(v)
-	case []interface{}:
-		out := make([]string, 0, len(v))
-		for _, s := range v {
-			if str, ok := s.(string); ok {
-				out = append(out, str)
-			}
-		}
-		return out
-	default:
-		return nil
-	}
-}
-
 func writeAuthError(w http.ResponseWriter, status int, message string) {
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(status)
@@ -82,6 +62,13 @@ func writeAuthError(w http.ResponseWriter, status int, message string) {
 
 // verify runs the real check requireScope relies on: a well-formed,
 // correctly-signed, unexpired Clerk session carrying agent:reset.
+//
+// It goes through verifyToken — the SAME in-process function POST
+// /auth/v1/introspect answers with (decision 21: "the vault's own two routes
+// call the same verification function in-process"). There is one verification
+// code path in this service and auth-service never calls itself over HTTP.
+// Only the rejection vocabulary differs, because these two routes answer an
+// operator while introspection answers a service.
 func (v *verifier) verify(w http.ResponseWriter, r *http.Request, hasScope func([]string) bool) bool {
 	token := bearerFrom(r)
 	if token == "" {
@@ -89,18 +76,17 @@ func (v *verifier) verify(w http.ResponseWriter, r *http.Request, hasScope func(
 		return false
 	}
 
-	parsed, err := jwt.Parse(token, func(t *jwt.Token) (interface{}, error) {
-		return v.publicKey, nil
-	}, jwt.WithValidMethods([]string{"RS256"}), issuerOption(v.issuer))
-	if err != nil || !parsed.Valid {
+	verified, err := v.verifyToken(token)
+	if err != nil {
 		// Not surfacing the specific reason — "expired" vs "bad signature" vs
 		// "wrong issuer" is a probing oracle, and the remedy is the same.
 		writeAuthError(w, http.StatusUnauthorized, "invalid or expired session")
 		return false
 	}
 
-	claims, ok := parsed.Claims.(jwt.MapClaims)
-	if !ok || !hasScope(scopesFrom(claims)) {
+	// strings.Fields is the whitespace-RUN split every verifier in the fleet
+	// performs on the verbatim scope string.
+	if !hasScope(strings.Fields(verified.Scope)) {
 		writeAuthError(w, http.StatusForbidden, "this action requires a scope this session does not carry")
 		return false
 	}

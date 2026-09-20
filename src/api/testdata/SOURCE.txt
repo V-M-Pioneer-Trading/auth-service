@@ -1,0 +1,16 @@
+introspection.json in this directory is a VERBATIM copy. Do not edit it here.
+
+  original: meta/fixtures/introspection.json
+            (V-M-Pioneer-Trading/meta, repo root `fixtures/introspection.json`)
+  meta commit: 358231fb38caa7d0cdfeaaea779f41ca9da25daa (2026-09-20)
+
+The provenance lives in this sibling file rather than as a key inside the JSON
+so the copy stays byte-identical to the original and `diff` is the drift check.
+Change meta first, then re-copy and update the commit above.
+
+auth-service is the CENTER, not a calling service: the `cases` and
+`gatewayCases` describe what a *client* answers, which this repository does not
+implement. What is normative here is the `contract` block (endpoint, method,
+content type, body template, secret header, env var names) and every `center`
+object inside a case — those are this service's own output. See
+introspection_fixture_test.go, which drives the center through all of them.
