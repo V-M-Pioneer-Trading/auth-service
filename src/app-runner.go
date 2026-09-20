@@ -22,6 +22,17 @@ func main() {
 	if err != nil {
 		log.Fatal(err)
 	}
+	// Deliberately not Require*: an unset AUTH_INTROSPECTION_SECRET is a
+	// running service with a route that rejects everyone, not a crash loop.
+	// Production has no such variable until meta#80 step 3. The only fatal
+	// case is it being set to the vault's secret.
+	introspectionSecret, err := api.ReadIntrospectionSecret(sharedSecret)
+	if err != nil {
+		log.Fatal(err)
+	}
+	if introspectionSecret == "" {
+		log.Default().Print("AUTH_INTROSPECTION_SECRET is not set: POST /auth/v1/introspect will reject every caller")
+	}
 
 	p := poller.New(conn)
 	ctx, cancel := context.WithCancel(context.Background())
@@ -29,10 +40,11 @@ func main() {
 	go p.Run(ctx)
 
 	r, err := api.SetUpRouter(api.Config{
-		Conn:         conn,
-		Auth:         api.AuthConfig{ClerkJWTKeyPEM: clerkJWTKey, ClerkIssuer: os.Getenv("CLERK_ISSUER")},
-		SharedSecret: sharedSecret,
-		Poller:       p,
+		Conn:                conn,
+		Auth:                api.AuthConfig{ClerkJWTKeyPEM: clerkJWTKey, ClerkIssuer: os.Getenv("CLERK_ISSUER")},
+		SharedSecret:        sharedSecret,
+		IntrospectionSecret: introspectionSecret,
+		Poller:              p,
 	})
 	if err != nil {
 		log.Fatal(err)

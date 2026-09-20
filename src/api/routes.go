@@ -23,7 +23,11 @@ type Config struct {
 	Conn         *sql.DB
 	Auth         AuthConfig
 	SharedSecret string
-	Poller       *poller.Poller
+	// IntrospectionSecret gates POST /auth/v1/introspect. Empty is legal and
+	// means the route rejects every caller (see introspect.go) — production
+	// has no AUTH_INTROSPECTION_SECRET until meta#80 step 3 applies it.
+	IntrospectionSecret string
+	Poller              *poller.Poller
 }
 
 type handlers struct {
@@ -36,6 +40,13 @@ func SetUpRouter(cfg Config) (*mux.Router, error) {
 	v, err := newVerifier(cfg.Auth)
 	if err != nil {
 		return nil, err
+	}
+	// Refuse to wire anything if the two secrets are the same value. main
+	// already checks this while reading the environment; it is repeated here
+	// so no future caller of SetUpRouter can assemble the collision by hand.
+	// Empty is not a collision — it is the fail-closed state.
+	if cfg.IntrospectionSecret != "" && cfg.IntrospectionSecret == cfg.SharedSecret {
+		return nil, errors.New("the introspection secret must not be the same value as the vault's shared secret")
 	}
 
 	r := mux.NewRouter()
@@ -53,6 +64,14 @@ func SetUpRouter(cfg Config) (*mux.Router, error) {
 	// explicit that this path must never get a public (Caddy) route at any
 	// method. It is the only route in this service that can return a token.
 	r.HandleFunc("/auth/v1/token", requireSharedSecret(cfg.SharedSecret, h.getToken)).Methods(http.MethodGet)
+
+	// POST /auth/v1/introspect is mounted bare and on the existing listener —
+	// one process, one port, no new container (decision 21). It is deliberately
+	// NOT under /api/auth: its callers are sibling services on the host, never
+	// a browser through CloudFront, and the path is fixed by
+	// meta/fixtures/introspection.json. Methods(POST) is what makes a GET a 405
+	// rather than an answer — a token must never travel in a URL.
+	r.HandleFunc("/auth/v1/introspect", v.introspectHandler(cfg.IntrospectionSecret)).Methods(http.MethodPost)
 
 	// GET /auth/v1/status is also mounted bare: decision 8 calls it "the
 	// second instance" of the existing GET /autopilot/status pattern, which
@@ -259,7 +278,11 @@ func writeJSON(w http.ResponseWriter, v interface{}) {
 
 func loggingMiddleware(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		log.Default().Printf("%s request: to %s", r.Method, r.RequestURI)
+		// r.URL.Path, never r.RequestURI: the latter carries the query string,
+		// and a caller that (wrongly) sends `?token=…` to /auth/v1/introspect
+		// would write a live credential into every log sink on the host. The
+		// route already ignores a query-string token; the log must not keep it.
+		log.Default().Printf("%s request: to %s", r.Method, r.URL.Path)
 		next.ServeHTTP(w, r)
 	})
 }
