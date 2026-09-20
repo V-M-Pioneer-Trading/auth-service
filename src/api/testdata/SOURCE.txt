@@ -3,6 +3,13 @@ introspection.json in this directory is a VERBATIM copy. Do not edit it here.
   original: meta/fixtures/introspection.json
             (V-M-Pioneer-Trading/meta, repo root `fixtures/introspection.json`)
   meta commit: 358231fb38caa7d0cdfeaaea779f41ca9da25daa (2026-09-20)
+  sha256: e937ad88062c0f6259d4aed67fb13e3fc75502c3c1f342d0b5cbbb59801a6fe0
+
+The sha256 above is the hash of the LF bytes of introspection.json and is
+asserted by introspection_fixture_test.go, so the pin enforces itself instead
+of relying on someone remembering to re-copy. The repository's .gitattributes
+marks that one file `-text` so a Windows checkout (core.autocrlf=true) keeps
+the same bytes a Linux checkout has and the hash holds on both.
 
 The provenance lives in this sibling file rather than as a key inside the JSON
 so the copy stays byte-identical to the original and `diff` is the drift check.

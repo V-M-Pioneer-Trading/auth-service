@@ -8,13 +8,17 @@ package api
 // ever leaves this process.
 
 import (
+	"bytes"
 	"encoding/json"
+	"log"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
 	"os"
 	"strings"
 	"testing"
+
+	"github.com/golang-jwt/jwt/v5"
 )
 
 const testIntrospectionSecret = "test-introspection-secret"
@@ -140,6 +144,154 @@ func tamperedToken() string {
 		payload[0] = 'A'
 	}
 	return parts[0] + "." + string(payload) + "." + parts[2]
+}
+
+// TestIntrospectionPinsRS256AndRejectsTheOtherRSAAlgorithms is the test the alg
+// pin never had. The two alg-confusion cases in the table above are stopped by
+// the KEY TYPE — an *rsa.PublicKey can never be an HMAC secret and `none` has
+// no signature to check — so they pass with or without
+// jwt.WithValidMethods. RS384, RS512 and PS256 are different: they are signed
+// by the trusted private key and verify against the trusted public key, so the
+// alg pin in verifyToken is the only thing between them and an active answer.
+//
+// Why it matters that they are refused rather than merely "also fine": the
+// fleet's three implementations agree on exactly one algorithm, and an
+// algorithm the center silently accepts is one a future Clerk misconfiguration
+// (or a downgrade toward PSS) can slip through without anybody noticing.
+func TestIntrospectionPinsRS256AndRejectsTheOtherRSAAlgorithms(t *testing.T) {
+	router, _, _ := newTestRouter(t)
+
+	methods := []struct {
+		name   string
+		method jwt.SigningMethod
+	}{
+		{"RS384", jwt.SigningMethodRS384},
+		{"RS512", jwt.SigningMethodRS512},
+		{"PS256", jwt.SigningMethodPS256},
+	}
+
+	for _, m := range methods {
+		t.Run(m.name, func(t *testing.T) {
+			token := signTestTokenWith(m.method, testPrivateKey, testTokenOptions{scopes: []string{SCOPEAgentReset}})
+
+			// Sanity: this token really is signed by the key the service
+			// trusts, so an inactive answer below can only be the alg pin and
+			// not an accident of key material.
+			if _, err := jwt.Parse(token, func(*jwt.Token) (interface{}, error) { return testPublicKey, nil },
+				jwt.WithValidMethods([]string{m.name})); err != nil {
+				t.Fatalf("the %s token does not verify against the trusted key at all (%v) — the case would prove nothing", m.name, err)
+			}
+
+			assertInactive(t, introspect(t, router, token, testIntrospectionSecret, true))
+
+			// The same token on a vault route: one verification path, so it
+			// must be refused there too, with the vault's own sentence.
+			rec := doRequest(t, router, http.MethodPost, "/api/auth/v1/register", "Bearer "+token, `{}`)
+			if rec.Code != http.StatusUnauthorized {
+				t.Fatalf("the vault route accepted a %s token: got %d (body: %s)", m.name, rec.Code, rec.Body.String())
+			}
+			if !strings.Contains(rec.Body.String(), "invalid or expired session") {
+				t.Errorf("the vault route's 401 sentence changed: %s", rec.Body.String())
+			}
+		})
+	}
+}
+
+// TestAuthResponsesAreUncacheable — an authentication decision in a shared
+// cache outlives the session it describes and can be served to a caller it was
+// never about. Both writers are covered: writeIntrospection's 200 and
+// writeAuthError's 401, on the introspection route and on a vault route, so
+// dropping the header from either one fails here.
+func TestAuthResponsesAreUncacheable(t *testing.T) {
+	router, _, _ := newTestRouter(t)
+	valid := signTestToken(testPrivateKey, testTokenOptions{scopes: []string{SCOPEAgentReset}})
+
+	assertNoStore := func(t *testing.T, rec *httptest.ResponseRecorder, what string) {
+		t.Helper()
+		if got := rec.Header().Get("Cache-Control"); got != "no-store" {
+			t.Errorf("%s: Cache-Control is %q, want %q (status %d)", what, got, "no-store", rec.Code)
+		}
+	}
+
+	t.Run("introspection 401 about the caller secret", func(t *testing.T) {
+		rec := introspect(t, router, valid, "the-wrong-secret", true)
+		if rec.Code != http.StatusUnauthorized {
+			t.Fatalf("expected a 401, got %d", rec.Code)
+		}
+		assertNoStore(t, rec, "introspection 401")
+	})
+
+	t.Run("introspection 200 active", func(t *testing.T) {
+		rec := introspect(t, router, valid, testIntrospectionSecret, true)
+		if body := decodeIntrospection(t, rec); body["active"] != true {
+			t.Fatalf("expected active, got %v", body)
+		}
+		assertNoStore(t, rec, "introspection 200 (active)")
+	})
+
+	t.Run("introspection 200 inactive", func(t *testing.T) {
+		rec := introspect(t, router, "not-a-jwt-at-all", testIntrospectionSecret, true)
+		assertInactive(t, rec)
+		assertNoStore(t, rec, "introspection 200 (inactive)")
+	})
+
+	t.Run("vault route 401", func(t *testing.T) {
+		rec := doRequest(t, router, http.MethodPost, "/api/auth/v1/register", foreignBearer(), `{}`)
+		if rec.Code != http.StatusUnauthorized {
+			t.Fatalf("expected a 401, got %d", rec.Code)
+		}
+		assertNoStore(t, rec, "vault route 401")
+	})
+
+	t.Run("vault route 403 about a missing scope", func(t *testing.T) {
+		rec := doRequest(t, router, http.MethodPost, "/api/auth/v1/register", bearerWithoutScope(), `{}`)
+		if rec.Code != http.StatusForbidden {
+			t.Fatalf("expected a 403, got %d", rec.Code)
+		}
+		assertNoStore(t, rec, "vault route 403")
+	})
+}
+
+// TestRequestLoggingNeverRecordsAQueryStringToken — the route already ignores a
+// token in the query string, but ignoring it is only half the job: the access
+// log is exactly the place a credential must not end up, and it is written by
+// middleware that sees the raw request before the handler does. This captures
+// the real log output for a request whose URL carries a live token and insists
+// none of it survives.
+func TestRequestLoggingNeverRecordsAQueryStringToken(t *testing.T) {
+	router, _, _ := newTestRouter(t)
+	valid := signTestToken(testPrivateKey, testTokenOptions{scopes: []string{SCOPEAgentReset}})
+
+	var captured bytes.Buffer
+	logger := log.Default()
+	originalOut, originalFlags := logger.Writer(), logger.Flags()
+	logger.SetOutput(&captured)
+	logger.SetFlags(0)
+	t.Cleanup(func() {
+		logger.SetOutput(originalOut)
+		logger.SetFlags(originalFlags)
+	})
+
+	path := "/auth/v1/introspect?token=" + url.QueryEscape(valid)
+	assertInactive(t, introspectRaw(t, router, path, "", testIntrospectionSecret, true))
+
+	logged := captured.String()
+	if !strings.Contains(logged, "/auth/v1/introspect") {
+		t.Fatalf("the request was not logged at all, so this test would pass for the wrong reason: %q", logged)
+	}
+	if strings.Contains(logged, valid) {
+		t.Errorf("the whole token was written to the log: %q", logged)
+	}
+	// The signature segment alone is enough to be a credential leak, and the
+	// escaped form is what a raw RequestURI actually contains.
+	for _, segment := range strings.Split(valid, ".") {
+		if strings.Contains(logged, segment) || strings.Contains(logged, url.QueryEscape(segment)) {
+			t.Errorf("a token segment reached the log: %q", logged)
+		}
+	}
+	if strings.Contains(logged, "token=") || strings.Contains(logged, "?") {
+		t.Errorf("the query string reached the log: %q", logged)
+	}
 }
 
 // TestIntrospectionMissingTokenFieldIsInactive covers a caller that posts a
@@ -319,20 +471,43 @@ func TestIntrospectionIgnoresATokenInTheQueryString(t *testing.T) {
 func TestIntrospectionRejectsAnOversizedBody(t *testing.T) {
 	router, _, _ := newTestRouter(t)
 
-	huge := "token=" + strings.Repeat("A", maxIntrospectionBody*2)
-	rec := introspectRaw(t, router, "/auth/v1/introspect", huge, testIntrospectionSecret, true)
+	valid := signTestToken(testPrivateKey, testTokenOptions{scopes: []string{SCOPEAgentReset}})
+
+	// THE case that bites. A body of padding alone proves nothing: it holds no
+	// token, so it is inactive with the cap AND inactive without it, and the
+	// assertion cannot fail however the cap is broken. This body carries a
+	// perfectly good token followed by padding that pushes the whole form past
+	// the cap — active if the cap is gone, inactive only because it is there.
+	form := url.Values{}
+	form.Set("token", valid)
+	withToken := form.Encode()
+	padded := withToken + "&padding=" + strings.Repeat("A", maxIntrospectionBody*2)
+	if len(withToken) >= maxIntrospectionBody {
+		t.Fatalf("the token alone (%d bytes) already exceeds the cap (%d) — the case would pass for the wrong reason",
+			len(withToken), maxIntrospectionBody)
+	}
+
+	rec := introspectRaw(t, router, "/auth/v1/introspect", padded, testIntrospectionSecret, true)
 	if rec.Code == http.StatusOK {
 		assertInactive(t, rec)
 	} else if rec.Code < 400 {
 		t.Fatalf("an oversized body must not be answered affirmatively, got %d", rec.Code)
 	}
 
-	// A body just under the cap is still processed normally, so the cap is a
-	// cap and not an outage.
-	valid := signTestToken(testPrivateKey, testTokenOptions{scopes: []string{SCOPEAgentReset}})
-	form := url.Values{}
-	form.Set("token", valid)
-	rec = introspectRaw(t, router, "/auth/v1/introspect", form.Encode(), testIntrospectionSecret, true)
+	// Padding with no token at all is inactive too, and stays a 200 rather than
+	// an error status — an oversized body is not a client error here.
+	huge := "token=" + strings.Repeat("A", maxIntrospectionBody*2)
+	rec = introspectRaw(t, router, "/auth/v1/introspect", huge, testIntrospectionSecret, true)
+	if rec.Code == http.StatusOK {
+		assertInactive(t, rec)
+	} else if rec.Code < 400 {
+		t.Fatalf("an oversized body must not be answered affirmatively, got %d", rec.Code)
+	}
+
+	// The control: the very same token, unpadded, is still active. Together
+	// with the case above this says the cap is a cap and not an outage — and it
+	// is what stops someone "fixing" the padded case by breaking verification.
+	rec = introspectRaw(t, router, "/auth/v1/introspect", withToken, testIntrospectionSecret, true)
 	if body := decodeIntrospection(t, rec); body["active"] != true {
 		t.Errorf("an ordinary token must still verify under the body cap, got %v", body)
 	}

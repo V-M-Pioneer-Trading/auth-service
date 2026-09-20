@@ -22,11 +22,15 @@ package api
 // the run instead of quietly checking less.
 
 import (
+	"bytes"
+	"crypto/sha256"
 	"encoding/json"
+	"fmt"
 	"net/url"
 	"os"
 	"path/filepath"
 	"reflect"
+	"sort"
 	"strings"
 	"testing"
 )
@@ -246,6 +250,116 @@ func TestCenterProducesEveryFixtureResponse(t *testing.T) {
 				"re-read fixtures/introspection.json and update testdata/SOURCE.txt", class, counts[class], want)
 		}
 	}
+}
+
+// TestVendoredFixtureIsTheExactCopyItClaimsToBe makes the vendored copy pin
+// ITSELF. Counting cases was never enough: a case could be renamed, or its
+// `center` body rewritten, or one swapped for another, and every count above
+// would still add up. Two assertions close that.
+//
+// First the sha256 of the file against the value recorded in SOURCE.txt beside
+// the meta commit — any byte that changes, anywhere in the fixture, fails here
+// and names the file to re-read. The hash is over the file's LF bytes;
+// .gitattributes marks this one file `-text` so a Windows checkout
+// (core.autocrlf=true) holds the same bytes as a Linux one and the pin is not
+// a CI-only pin.
+//
+// Second the sorted case names, which is the assertion that stays readable: a
+// diff here says exactly which case meta added, dropped or renamed, where the
+// hash only says "something moved".
+func TestVendoredFixtureIsTheExactCopyItClaimsToBe(t *testing.T) {
+	raw, err := os.ReadFile(filepath.Join("testdata", "introspection.json"))
+	if err != nil {
+		t.Fatalf("the vendored fixture is missing (see testdata/SOURCE.txt): %v", err)
+	}
+
+	t.Run("sha256 matches the value recorded in SOURCE.txt", func(t *testing.T) {
+		want := recordedFixtureSHA256(t)
+		got := fmt.Sprintf("%x", sha256.Sum256(raw))
+		if got != want {
+			if bytes.Contains(raw, []byte("\r\n")) {
+				t.Fatalf("the vendored fixture hashes to %s, SOURCE.txt records %s — the working copy has CRLF line endings, "+
+					"so the `-text` entry in .gitattributes is missing or this file was checked out before it was added; "+
+					"re-check it out (git rm --cached + git checkout) before re-recording the hash", got, want)
+			}
+			t.Fatalf("the vendored fixture hashes to %s, SOURCE.txt records %s — testdata/introspection.json and meta have drifted; "+
+				"re-copy fixtures/introspection.json from meta and update BOTH the commit and the sha256 in testdata/SOURCE.txt", got, want)
+		}
+	})
+
+	t.Run("the case names are exactly the ones this file was written against", func(t *testing.T) {
+		f := loadFixture(t)
+		got := make([]string, 0, len(f.Cases)+len(f.GatewayCases))
+		for _, c := range append(append([]fixtureCase{}, f.Cases...), f.GatewayCases...) {
+			got = append(got, c.Name)
+		}
+		sort.Strings(got)
+
+		want := []string{
+			"active-machine-kind",
+			"active-with-irregular-scope-whitespace",
+			"active-with-multi-value-scope",
+			"active-with-required-scope",
+			"active-without-required-scope",
+			"center-rejects-our-caller-secret",
+			"center-returns-500",
+			"center-returns-malformed-json",
+			"center-times-out",
+			"center-unreachable",
+			"gateway-active-machine",
+			"gateway-active-operator",
+			"gateway-center-rejects-our-caller-secret",
+			"gateway-center-unreachable",
+			"gateway-inactive-token",
+			"gateway-kind-machine-with-user-subject",
+			"gateway-kind-operator-with-machine-subject",
+			"gateway-no-header",
+			"gateway-non-bearer-scheme",
+			"inactive-token-on-guarded-route",
+			"inactive-token-on-public-get",
+			"kind-disagrees-with-sub-prefix",
+			"mutating-route-with-no-declared-scope",
+			"mutating-route-with-no-declared-scope-and-inactive-token",
+			"mutating-route-with-no-declared-scope-and-no-header",
+			"no-header-on-guarded-route",
+			"non-bearer-scheme-on-guarded-route",
+			"operator-on-public-get",
+			"session-route-with-inactive-token",
+			"session-route-with-no-header",
+			"session-route-with-scopeless-token",
+			"token-on-public-get-while-center-is-down",
+			"visitor-on-public-get",
+		}
+		if !reflect.DeepEqual(got, want) {
+			t.Errorf("the fixture's case names changed.\n got: %s\nwant: %s\n"+
+				"re-read meta/fixtures/introspection.json, decide what the new or renamed case means for the CENTER, "+
+				"then update this list, the class totals above and testdata/SOURCE.txt",
+				strings.Join(got, "\n      "), strings.Join(want, "\n      "))
+		}
+	})
+}
+
+// recordedFixtureSHA256 reads the pin out of testdata/SOURCE.txt, so the
+// provenance note and the assertion can never disagree with one another.
+func recordedFixtureSHA256(t *testing.T) string {
+	t.Helper()
+	source, err := os.ReadFile(filepath.Join("testdata", "SOURCE.txt"))
+	if err != nil {
+		t.Fatalf("testdata/SOURCE.txt is missing: %v", err)
+	}
+	for _, line := range strings.Split(string(source), "\n") {
+		_, value, found := strings.Cut(strings.TrimSpace(line), "sha256:")
+		if !found {
+			continue
+		}
+		hash := strings.TrimSpace(value)
+		if len(hash) != 64 {
+			t.Fatalf("testdata/SOURCE.txt records a malformed sha256 %q", hash)
+		}
+		return hash
+	}
+	t.Fatal("testdata/SOURCE.txt has no `sha256:` line — the vendored fixture's pin is what makes it a copy rather than a fork")
+	return ""
 }
 
 // assertBodyEquals compares two JSON documents structurally, and additionally

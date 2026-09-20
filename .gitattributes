@@ -1,0 +1,6 @@
+# The vendored introspection fixture is a byte-for-byte copy of
+# meta/fixtures/introspection.json and its sha256 is pinned in
+# src/api/testdata/SOURCE.txt. Never translate its line endings: with
+# core.autocrlf=true a Windows checkout would otherwise hash differently from a
+# Linux one and the pin would only hold on CI.
+src/api/testdata/introspection.json -text

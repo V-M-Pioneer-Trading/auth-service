@@ -278,7 +278,11 @@ func writeJSON(w http.ResponseWriter, v interface{}) {
 
 func loggingMiddleware(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		log.Default().Printf("%s request: to %s", r.Method, r.RequestURI)
+		// r.URL.Path, never r.RequestURI: the latter carries the query string,
+		// and a caller that (wrongly) sends `?token=…` to /auth/v1/introspect
+		// would write a live credential into every log sink on the host. The
+		// route already ignores a query-string token; the log must not keep it.
+		log.Default().Printf("%s request: to %s", r.Method, r.URL.Path)
 		next.ServeHTTP(w, r)
 	})
 }

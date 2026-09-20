@@ -14,6 +14,7 @@ package api
 // (st-gateway) has no Clerk session of its own.
 
 import (
+	"crypto/rsa"
 	"encoding/json"
 	"errors"
 	"net/http"
@@ -32,8 +33,12 @@ type AuthConfig struct {
 	ClerkIssuer    string // empty means "don't check"
 }
 
+// publicKey is deliberately *rsa.PublicKey and not interface{}: the alg pin in
+// verifyToken and the key's concrete type are two independent locks on the same
+// door, and a typed field means no future edit can quietly park an HMAC secret
+// here.
 type verifier struct {
-	publicKey interface{}
+	publicKey *rsa.PublicKey
 	issuer    string
 }
 
@@ -56,6 +61,10 @@ func bearerFrom(r *http.Request) string {
 
 func writeAuthError(w http.ResponseWriter, status int, message string) {
 	w.Header().Set("Content-Type", "application/json")
+	// Same rule as writeIntrospection's success path: nothing about an
+	// authentication decision may sit in a shared cache, where it would outlive
+	// the session it describes and answer for a caller it was never about.
+	w.Header().Set("Cache-Control", "no-store")
 	w.WriteHeader(status)
 	json.NewEncoder(w).Encode(map[string]map[string]string{"error": {"message": message}})
 }

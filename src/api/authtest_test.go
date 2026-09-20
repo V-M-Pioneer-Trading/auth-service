@@ -115,7 +115,17 @@ func testTokenClaims(opts testTokenOptions) jwt.MapClaims {
 }
 
 func signTestToken(key *rsa.PrivateKey, opts testTokenOptions) string {
-	token := jwt.NewWithClaims(jwt.SigningMethodRS256, testTokenClaims(opts))
+	return signTestTokenWith(jwt.SigningMethodRS256, key, opts)
+}
+
+// signTestTokenWith signs with an arbitrary RSA-family method. RS384, RS512 and
+// PS256 all take the very same *rsa.PrivateKey and verify against the very same
+// *rsa.PublicKey, so neither the key type nor the key function rejects them —
+// jwt.WithValidMethods("RS256") is the ONLY thing that does. That is what makes
+// these the tokens the alg pin has to be tested with; HS256 and alg=none are
+// already stopped by the key type before the pin is reached.
+func signTestTokenWith(method jwt.SigningMethod, key *rsa.PrivateKey, opts testTokenOptions) string {
+	token := jwt.NewWithClaims(method, testTokenClaims(opts))
 	signed, err := token.SignedString(key)
 	if err != nil {
 		panic(err)
@@ -163,8 +173,14 @@ func bearerWithoutScope() string {
 }
 
 // expiredBearer returns a well-formed token whose exp has already passed.
+//
+// -600, not -60: the verifier allows a 60 s leeway, so a token exactly 60 s
+// past exp sits ON the boundary and whether it is dead depends on which side of
+// a second the test happens to land. Ten minutes is unambiguously expired, and
+// the leeway boundary itself is pinned deliberately (from both sides) in
+// TestIntrospectionAcceptsAValidTokenWithinTheLeeway.
 func expiredBearer() string {
-	return "Bearer " + signTestToken(testPrivateKey, testTokenOptions{scopes: []string{SCOPEAgentReset}, expiresInSeconds: -60})
+	return "Bearer " + signTestToken(testPrivateKey, testTokenOptions{scopes: []string{SCOPEAgentReset}, expiresInSeconds: -600})
 }
 
 // foreignBearer is correctly shaped, correct scope, valid exp — signed by a
