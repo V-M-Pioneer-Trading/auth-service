@@ -596,19 +596,48 @@ func TestIntrospectionReturnsScopeVerbatim(t *testing.T) {
 		}
 	})
 
-	t.Run("a token with no scope claim is active and scopeless", func(t *testing.T) {
-		// A verified session carrying nothing is the fixture's
-		// `session-route-with-scopeless-token`: active, empty scope, and it is
-		// the client that decides whether that is enough.
-		token := signTestToken(testPrivateKey, testTokenOptions{scopeRaw: "", scopes: nil})
-		body := decodeIntrospection(t, introspect(t, router, token, testIntrospectionSecret, true))
-		if body["active"] != true {
-			t.Fatalf("a scopeless session must still be active, got %v", body)
-		}
-		if s, present := body["scope"]; present && s != "" {
-			t.Errorf("expected an empty scope, got %q", s)
-		}
-	})
+}
+
+// TestIntrospectionAlwaysSendsScope pins the contract that an ACTIVE answer
+// always carries the `scope` key, as "" when the token holds no scopes. RFC
+// 7662 would allow leaving it out; our contract does not, because
+// ts-introspection-client v1.1.0 treats a missing scope as a malformed answer
+// and turns every session route into a 503 for a signed-in user with no
+// scopes. The fixture only ever stubs `"scope":""`, and the fixture test
+// marshals its expectation through the same struct, which is why nothing
+// caught the omitempty that used to drop it. A verified session carrying
+// nothing is the fixture's `session-route-with-scopeless-token`: active,
+// empty scope, and it is the client that decides whether that is enough.
+func TestIntrospectionAlwaysSendsScope(t *testing.T) {
+	router, _, _ := newTestRouter(t)
+
+	for _, tc := range []struct {
+		name string
+		opts testTokenOptions
+	}{
+		{"no scope claim at all", testTokenOptions{omitScope: true}},
+		{"empty-string scope claim", testTokenOptions{}},
+		{"empty-array scope claim", testTokenOptions{scopeArray: []string{}}},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			token := signTestToken(testPrivateKey, tc.opts)
+			rec := introspect(t, router, token, testIntrospectionSecret, true)
+			body := decodeIntrospection(t, rec)
+			if body["active"] != true {
+				t.Fatalf("a scopeless session must still be active, got %s", rec.Body.String())
+			}
+			s, present := body["scope"]
+			if !present {
+				t.Fatalf("an active answer must carry the scope key even when empty, got %s", rec.Body.String())
+			}
+			if s != "" {
+				t.Errorf("expected scope \"\", got %q", s)
+			}
+			if !strings.Contains(rec.Body.String(), `"scope":""`) {
+				t.Errorf("expected a literal \"scope\":\"\" on the wire, got %s", rec.Body.String())
+			}
+		})
+	}
 }
 
 // TestReadIntrospectionSecret covers the startup contract: unset is legal and

@@ -57,6 +57,10 @@ type testTokenOptions struct {
 	// produce. The contract says the center answers with a space-delimited
 	// string either way.
 	scopeArray []string
+	// omitScope leaves the `scope` claim out of the token entirely. Without it
+	// every test token carries at least `"scope":""`, so a token with NO scope
+	// claim, which a Clerk session holding no scopes can be, is never exercised.
+	omitScope bool
 	// expiresAtUnix, when non-zero, pins `exp` absolutely (the fixture's
 	// 4102444800) rather than relative to now.
 	expiresAtUnix int64
@@ -98,6 +102,9 @@ func testTokenClaims(opts testTokenOptions) jwt.MapClaims {
 			arr = append(arr, s)
 		}
 		claims["scope"] = arr
+	}
+	if opts.omitScope {
+		delete(claims, "scope")
 	}
 	if opts.expiresAtUnix != 0 {
 		claims["exp"] = opts.expiresAtUnix

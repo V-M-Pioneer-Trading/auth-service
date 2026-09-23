@@ -143,15 +143,28 @@ func scopeStringFrom(claims jwt.MapClaims) string {
 // than a map precisely so no other claim can ever leak into it. A token's
 // `iat`, `azp`, `sid`, `email` and anything else Clerk puts in it stay inside
 // this process.
+//
+// Scope has no omitempty. Our contract is stricter than RFC 7662, which
+// lets an active answer leave `scope` out: here it is ALWAYS present, as
+// "" when the token carries none. A client that reads a missing scope as a
+// malformed answer (ts-introspection-client v1.1.0 does, and answers 503)
+// would otherwise fail every signed-in user who holds no scopes.
 type introspectionResponse struct {
 	Active bool   `json:"active"`
 	Sub    string `json:"sub,omitempty"`
-	Scope  string `json:"scope,omitempty"`
+	Scope  string `json:"scope"`
 	Exp    int64  `json:"exp,omitempty"`
 	Kind   string `json:"kind,omitempty"`
 }
 
 var inactiveResponse = introspectionResponse{Active: false}
+
+// inactiveBody is what an inactive answer is marshalled as. Scope no longer
+// has omitempty, so encoding introspectionResponse{Active: false} would emit
+// `"scope":""`; an inactive answer must stay exactly {"active":false}.
+type inactiveBody struct {
+	Active bool `json:"active"`
+}
 
 // IntrospectionConfig is how the caller secret reaches the route.
 type IntrospectionConfig struct {
@@ -213,6 +226,10 @@ func writeIntrospection(w http.ResponseWriter, resp introspectionResponse) {
 	// result anywhere, because a cache is a second verification path with a
 	// different answer and it makes revocation mean nothing for its lifetime.
 	w.Header().Set("Cache-Control", "no-store")
+	if !resp.Active {
+		json.NewEncoder(w).Encode(inactiveBody{Active: false})
+		return
+	}
 	json.NewEncoder(w).Encode(resp)
 }
 
