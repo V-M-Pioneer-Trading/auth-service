@@ -210,7 +210,8 @@ func TestCenterProducesEveryFixtureResponse(t *testing.T) {
 				// assertion becomes "the center answers the DERIVED kind", which
 				// is the very rule those cases exist to pin ownership of.
 				derived := VerifiedToken{Subject: expected.Sub}.Kind()
-				if expected.Kind != derived {
+				kindAgrees := expected.Kind == derived
+				if !kindAgrees {
 					t.Logf("fixture case %q reports kind %q for subject %q on purpose; "+
 						"the center derives %q and cannot produce the pairing (that is the point of the case)",
 						c.Name, expected.Kind, expected.Sub, derived)
@@ -224,6 +225,15 @@ func TestCenterProducesEveryFixtureResponse(t *testing.T) {
 				})
 				rec := introspect(t, router, token, testIntrospectionSecret, true)
 
+				// Where the fixture's pairing is producible, compare against the
+				// fixture's OWN body, never one re-marshalled through
+				// introspectionResponse: marshalling the expectation through the
+				// struct under test is how a `scope,omitempty` once dropped the
+				// key from every scopeless answer with this test still green.
+				if kindAgrees {
+					assertBodyEquals(t, rec.Body.String(), c.Center.Body)
+					return
+				}
 				wantJSON, err := json.Marshal(introspectionResponse{
 					Active: true, Sub: expected.Sub, Scope: expected.Scope, Exp: expected.Exp, Kind: expected.Kind,
 				})
