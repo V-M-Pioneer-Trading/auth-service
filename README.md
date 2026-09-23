@@ -85,6 +85,9 @@ against what its own route declares. The contract is fixed by
   and the remedy is the same for all of them.
 - `scope` is **verbatim** — irregular whitespace and all. Every client splits
   on whitespace runs. This service keeps no route-to-scope table.
+- `scope` is **always present** on an active answer, as `""` when the token
+  carries no scopes (no claim, an empty string or an empty array). RFC 7662
+  would allow leaving it out; this contract does not.
 - `kind` is `operator` when `sub` starts `user_`, else `machine`. This is the
   one place in the fleet that knows Clerk's `sub` conventions; clients use the
   answer and must never re-derive it.
