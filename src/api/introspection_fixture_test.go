@@ -15,7 +15,8 @@ package api
 //
 // So this test walks EVERY case in both groups and drives the real route with
 // a real signed token for each center response it is possible for the center
-// to produce, asserting byte-equal JSON. Cases whose `center` describes client-
+// to produce, asserting the status and structurally equal JSON (same keys,
+// same values; order and whitespace ignored). Cases whose `center` describes client-
 // side transport (a delay, a dead socket, a 500, an HTML body) are not skipped
 // silently: they are classified, counted, and the classification itself is
 // asserted, so a case added to meta that this file does not understand fails
@@ -188,6 +189,9 @@ func TestCenterProducesEveryFixtureResponse(t *testing.T) {
 				// The fixture's token strings are deliberately not JWTs. Send
 				// one verbatim: the center must answer exactly this body.
 				rec := introspect(t, router, "expired.token.one", testIntrospectionSecret, true)
+				if rec.Code != c.Center.Status {
+					t.Fatalf("got %d, fixture says the center answers %d", rec.Code, c.Center.Status)
+				}
 				assertBodyEquals(t, rec.Body.String(), c.Center.Body)
 			})
 
@@ -224,6 +228,9 @@ func TestCenterProducesEveryFixtureResponse(t *testing.T) {
 					expiresAtUnix: expected.Exp,
 				})
 				rec := introspect(t, router, token, testIntrospectionSecret, true)
+				if rec.Code != c.Center.Status {
+					t.Fatalf("got %d, fixture says the center answers %d", rec.Code, c.Center.Status)
+				}
 
 				// Where the fixture's pairing is producible, compare against the
 				// fixture's OWN body, never one re-marshalled through
