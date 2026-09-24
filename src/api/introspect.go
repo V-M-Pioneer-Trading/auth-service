@@ -81,8 +81,9 @@ func (v VerifiedToken) Kind() string {
 // per reason on purpose — see the file comment.
 var errNotVerified = errors.New("token did not verify")
 
-// verifyToken is THE verification function: RS256 pinned, `exp` REQUIRED,
-// a non-empty string `sub` REQUIRED, `exp`/`nbf` with leeway, `CLERK_ISSUER` checked when configured, networkless, no bypass flag
+// verifyToken is THE verification function: RS256 pinned, `exp` required
+// and checked with `nbf` under a leeway, a non-empty string `sub` required,
+// `CLERK_ISSUER` checked when configured, networkless, no bypass flag
 // (decision 10). `azp` is deliberately NOT checked (owner's decision,
 // 2026-09-20; see decision 21's "Not in this epic").
 func (v *verifier) verifyToken(token string) (VerifiedToken, error) {
@@ -100,7 +101,9 @@ func (v *verifier) verifyToken(token string) (VerifiedToken, error) {
 		jwt.WithLeeway(clockSkewLeeway*time.Second),
 		// jwt/v5 accepts a token with no `exp` unless told otherwise. Such a
 		// token would never expire, and its introspection answer would omit
-		// `exp`, which every client reads as a malformed answer (503).
+		// `exp`, which every client reads as a malformed answer (503). The
+		// post-parse GetExpirationTime check below is a second lock on the
+		// same property, so a test cannot tell the two apart; keep both.
 		jwt.WithExpirationRequired(),
 		issuerOption(v.issuer),
 	)
