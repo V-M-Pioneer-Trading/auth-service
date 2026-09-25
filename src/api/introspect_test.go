@@ -685,3 +685,43 @@ func TestSetUpRouterRefusesIdenticalSecrets(t *testing.T) {
 		t.Fatal("expected SetUpRouter to refuse an introspection secret equal to the vault's shared secret")
 	}
 }
+
+// TestTokenWithoutSubOrExpIsNotVerified pins that the center fails closed on a
+// correctly signed token missing `sub` or `exp`. jwt/v5 accepts a token with
+// no `exp` by default, which would never expire; and with `omitempty` on both
+// fields such a token was answered active with the key missing, which every
+// client reads as a malformed answer (503). Refusing the token instead gives
+// the ordinary {"active":false} here and the ordinary 401 on the vault routes,
+// which call the same verifyToken.
+func TestTokenWithoutSubOrExpIsNotVerified(t *testing.T) {
+	router, _, _ := newTestRouter(t)
+
+	for _, tc := range []struct {
+		name string
+		opts testTokenOptions
+	}{
+		{"no exp claim", testTokenOptions{scopes: []string{SCOPEAgentReset}, omitExp: true}},
+		{"no sub claim", testTokenOptions{scopes: []string{SCOPEAgentReset}, omitSub: true}},
+		{"empty sub", testTokenOptions{scopes: []string{SCOPEAgentReset}, extraClaims: map[string]interface{}{"sub": ""}}},
+		{"non-string sub", testTokenOptions{scopes: []string{SCOPEAgentReset}, extraClaims: map[string]interface{}{"sub": 42}}},
+		{"non-numeric exp", testTokenOptions{scopes: []string{SCOPEAgentReset}, extraClaims: map[string]interface{}{"exp": "never"}}},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			token := signTestToken(testPrivateKey, tc.opts)
+
+			assertInactive(t, introspect(t, router, token, testIntrospectionSecret, true))
+
+			rec := doRequest(t, router, http.MethodPost, "/api/auth/v1/agent-token", "Bearer "+token, `{"agentToken":"new-token"}`)
+			if rec.Code != http.StatusUnauthorized {
+				t.Errorf("vault route: got %d, want 401 (body: %s)", rec.Code, rec.Body.String())
+			}
+		})
+	}
+
+	// Control: the same options with both claims present still verify, so the
+	// cases above fail for the claim they remove and nothing else.
+	token := signTestToken(testPrivateKey, testTokenOptions{scopes: []string{SCOPEAgentReset}})
+	if body := decodeIntrospection(t, introspect(t, router, token, testIntrospectionSecret, true)); body["active"] != true {
+		t.Fatalf("control token should be active, got %v", body)
+	}
+}

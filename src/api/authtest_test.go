@@ -61,6 +61,10 @@ type testTokenOptions struct {
 	// every test token carries at least `"scope":""`, so a token with NO scope
 	// claim, which a Clerk session holding no scopes can be, is never exercised.
 	omitScope bool
+	// omitSub and omitExp leave those claims out. The center must refuse
+	// both: an active answer without them is one no client accepts.
+	omitSub bool
+	omitExp bool
 	// expiresAtUnix, when non-zero, pins `exp` absolutely (the fixture's
 	// 4102444800) rather than relative to now.
 	expiresAtUnix int64
@@ -117,6 +121,12 @@ func testTokenClaims(opts testTokenOptions) jwt.MapClaims {
 	}
 	for k, val := range opts.extraClaims {
 		claims[k] = val
+	}
+	if opts.omitSub {
+		delete(claims, "sub")
+	}
+	if opts.omitExp {
+		delete(claims, "exp")
 	}
 	return claims
 }

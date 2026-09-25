@@ -77,7 +77,8 @@ against what its own route declares. The contract is fixed by
   a URL lands in access logs.
 - **Response** — always `200` once the caller's secret is good.
   `{"active":false}` for anything that does not verify (invalid, expired
-  beyond leeway, foreign-signed, malformed, missing, oversized), with nothing
+  beyond leeway, foreign-signed, malformed, missing, oversized, or carrying no
+  `exp` or no non-empty `sub`), with nothing
   else in the body; otherwise
   `{"active":true,"sub":…,"scope":"a b c","exp":…,"kind":"operator"|"machine"}`
   and **never any other claim** — `azp`, `sid`, `email` and the rest stay in
@@ -95,8 +96,9 @@ against what its own route declares. The contract is fixed by
   `a valid introspection secret is required`. That `401` is about *the calling
   service*, never about the end user's token, and a client must relay it as a
   `503`, never as a `401`.
-- **Verification** — unchanged from what every service does today, moved:
-  `golang-jwt`, RS256 pinned, `exp`/`nbf` with a **60-second** leeway (decision
+- **Verification** — what every service did before, moved here, plus two
+  stricter checks: `exp` is required and `sub` must be a non-empty string, so
+  an active answer always carries both. `golang-jwt`, RS256 pinned, `exp`/`nbf` with a **60-second** leeway (decision
   21 says "a small leeway" without naming a value; 60 s is this repository's
   choice — see `clockSkewLeeway` in `src/api/introspect.go` for the reasoning),
   `CLERK_ISSUER` checked when configured, networkless, no bypass flag. `azp` is
