@@ -147,8 +147,9 @@ func scopeStringFrom(claims jwt.MapClaims) string {
 // Scope has no omitempty. Our contract is stricter than RFC 7662, which
 // lets an active answer leave `scope` out: here it is ALWAYS present, as
 // "" when the token carries none. A client that reads a missing scope as a
-// malformed answer (ts-introspection-client v1.1.0 does, and answers 503)
-// would otherwise fail every signed-in user who holds no scopes.
+// malformed answer (ts-introspection-client 1.0.0-1.1.0 did, and answered
+// 503; 1.1.1 tolerates it) would otherwise fail every signed-in user who
+// holds no scopes.
 type introspectionResponse struct {
 	Active bool   `json:"active"`
 	Sub    string `json:"sub,omitempty"`

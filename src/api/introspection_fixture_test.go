@@ -15,7 +15,8 @@ package api
 //
 // So this test walks EVERY case in both groups and drives the real route with
 // a real signed token for each center response it is possible for the center
-// to produce, asserting byte-equal JSON. Cases whose `center` describes client-
+// to produce, asserting the status and structurally equal JSON (same keys,
+// same values; order and whitespace ignored). Cases whose `center` describes client-
 // side transport (a delay, a dead socket, a 500, an HTML body) are not skipped
 // silently: they are classified, counted, and the classification itself is
 // asserted, so a case added to meta that this file does not understand fails
@@ -188,6 +189,9 @@ func TestCenterProducesEveryFixtureResponse(t *testing.T) {
 				// The fixture's token strings are deliberately not JWTs. Send
 				// one verbatim: the center must answer exactly this body.
 				rec := introspect(t, router, "expired.token.one", testIntrospectionSecret, true)
+				if rec.Code != c.Center.Status {
+					t.Fatalf("got %d, fixture says the center answers %d", rec.Code, c.Center.Status)
+				}
 				assertBodyEquals(t, rec.Body.String(), c.Center.Body)
 			})
 
@@ -210,7 +214,8 @@ func TestCenterProducesEveryFixtureResponse(t *testing.T) {
 				// assertion becomes "the center answers the DERIVED kind", which
 				// is the very rule those cases exist to pin ownership of.
 				derived := VerifiedToken{Subject: expected.Sub}.Kind()
-				if expected.Kind != derived {
+				kindAgrees := expected.Kind == derived
+				if !kindAgrees {
 					t.Logf("fixture case %q reports kind %q for subject %q on purpose; "+
 						"the center derives %q and cannot produce the pairing (that is the point of the case)",
 						c.Name, expected.Kind, expected.Sub, derived)
@@ -223,7 +228,19 @@ func TestCenterProducesEveryFixtureResponse(t *testing.T) {
 					expiresAtUnix: expected.Exp,
 				})
 				rec := introspect(t, router, token, testIntrospectionSecret, true)
+				if rec.Code != c.Center.Status {
+					t.Fatalf("got %d, fixture says the center answers %d", rec.Code, c.Center.Status)
+				}
 
+				// Where the fixture's pairing is producible, compare against the
+				// fixture's OWN body, never one re-marshalled through
+				// introspectionResponse: marshalling the expectation through the
+				// struct under test is how a `scope,omitempty` once dropped the
+				// key from every scopeless answer with this test still green.
+				if kindAgrees {
+					assertBodyEquals(t, rec.Body.String(), c.Center.Body)
+					return
+				}
 				wantJSON, err := json.Marshal(introspectionResponse{
 					Active: true, Sub: expected.Sub, Scope: expected.Scope, Exp: expected.Exp, Kind: expected.Kind,
 				})
