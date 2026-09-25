@@ -1,10 +1,10 @@
-# Multi-stage, unlike agent-service's single-stage Dockerfile: this service's
+# Multi-stage with a distroless final image: this service's
 # whole reason for existing is holding a credential, so a minimal final image
 # with no shell and no package manager is a security property worth the extra
 # stage (auth-design.md: "a small dependency tree is a security argument
 # rather than a taste one here"). CGO_ENABLED=0 works cleanly because
-# modernc.org/sqlite is a pure-Go SQLite implementation — no CGO cross-compile
-# pain for the multi-arch build in CI.
+# modernc.org/sqlite is a pure-Go SQLite implementation — no CGO toolchain
+# needed in the build image.
 FROM golang:1.22-alpine AS build
 
 WORKDIR /auth-service
