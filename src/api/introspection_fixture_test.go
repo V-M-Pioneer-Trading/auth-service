@@ -56,7 +56,12 @@ type fixtureFile struct {
 }
 
 type fixtureCase struct {
-	Name   string `json:"name"`
+	Name    string `json:"name"`
+	Request struct {
+		// Authorization is a string (one header line), null (none) or, since
+		// fixture version 4, an array of two or more strings (one per line).
+		Authorization json.RawMessage `json:"authorization"`
+	} `json:"request"`
 	Center struct {
 		NotCalled bool   `json:"notCalled"`
 		Status    int    `json:"status"`
@@ -86,8 +91,8 @@ func loadFixture(t *testing.T) fixtureFile {
 	if err := json.Unmarshal(raw, &f); err != nil {
 		t.Fatalf("the vendored fixture does not parse: %v", err)
 	}
-	if f.Version != 1 {
-		t.Fatalf("vendored fixture is version %d; this test was written against version 1 — re-read it before re-copying", f.Version)
+	if f.Version != 4 {
+		t.Fatalf("vendored fixture is version %d; this test was written against version 4 — re-read it before re-copying", f.Version)
 	}
 	return f
 }
@@ -132,12 +137,32 @@ func TestFixtureContractNamesMatchTheRoute(t *testing.T) {
 type centerClass int
 
 const (
-	classNotApplicable centerClass = iota // the center is not called at all
-	classActive                           // a 200 the center produces for a good token
-	classInactive                         // the 200 {"active":false}
-	classCallerSecret                     // the 401 about OUR caller secret
-	classClientOnly                       // transport/5xx/garbage: a stub's job, not the center's
+	classNotApplicable    centerClass = iota // the center is not called at all
+	classActive                              // a 200 the center produces for a good token
+	classInactive                            // the 200 {"active":false}
+	classCallerSecret                        // the 401 about OUR caller secret
+	classClientOnly                          // transport/5xx/garbage: a stub's job, not the center's
+	classActiveNoScopeKey                    // an active body WITHOUT `scope`: a client obligation, never the center's output
 )
+
+// authorizationLines decodes request.authorization: a string is one header
+// line, null/absent is none, an array (fixture version 4) is one element per
+// line. Anything else fails, so a new shape in meta is not silently accepted.
+func authorizationLines(t *testing.T, raw json.RawMessage) []string {
+	t.Helper()
+	if len(raw) == 0 || string(raw) == "null" {
+		return nil
+	}
+	var one string
+	if err := json.Unmarshal(raw, &one); err == nil {
+		return []string{one}
+	}
+	var many []string
+	if err := json.Unmarshal(raw, &many); err != nil {
+		t.Fatalf("request.authorization is neither a string, null nor an array of strings: %s", raw)
+	}
+	return many
+}
 
 func classify(c fixtureCase) (centerClass, *centerBody) {
 	switch {
@@ -158,6 +183,12 @@ func classify(c fixtureCase) (centerClass, *centerBody) {
 	if !body.Active {
 		return classInactive, nil
 	}
+	var keys map[string]json.RawMessage
+	if err := json.Unmarshal([]byte(c.Center.Body), &keys); err == nil {
+		if _, has := keys["scope"]; !has {
+			return classActiveNoScopeKey, &body
+		}
+	}
 	return classActive, &body
 }
 
@@ -168,11 +199,13 @@ func TestCenterProducesEveryFixtureResponse(t *testing.T) {
 	router, _, _ := newTestRouter(t)
 
 	all := append(append([]fixtureCase{}, f.Cases...), f.GatewayCases...)
-	if len(all) != 33 {
-		t.Fatalf("expected 33 fixture cases (24 calling-service + 9 gateway), found %d — re-read meta before re-copying", len(all))
+	if len(f.Cases) != 40 || len(f.GatewayCases) != 12 || len(all) != 52 {
+		t.Fatalf("expected 52 fixture cases (40 calling-service + 12 gateway), found %d (%d + %d) — re-read meta before re-copying",
+			len(all), len(f.Cases), len(f.GatewayCases))
 	}
 
 	counts := map[centerClass]int{}
+	multiLine := 0
 
 	for _, c := range all {
 		class, want := classify(c)
@@ -183,6 +216,57 @@ func TestCenterProducesEveryFixtureResponse(t *testing.T) {
 			// Nothing for the center to produce. Counted, and the totals are
 			// asserted below so this branch cannot quietly swallow a case that
 			// should have exercised the route.
+			//
+			// Version 4 `two-authorization-lines*` and
+			// `gateway-two-authorization-lines` land here: request.authorization
+			// is an array and center.notCalled is true (more than one
+			// Authorization line is no credential, so the client never calls the
+			// center). They are accounted for as not-called, and asserted to be
+			// exactly that: a multi-line case that does call the center would
+			// be a claim this file does not understand.
+			if lines := authorizationLines(t, c.Request.Authorization); len(lines) > 1 {
+				multiLine++
+				if class != classNotApplicable {
+					t.Errorf("case %q sends %d Authorization lines but the fixture says the center answers; expected notCalled", c.Name, len(lines))
+				}
+			}
+
+		case classActiveNoScopeKey:
+			// UNPRODUCIBLE BY CONSTRUCTION. The fixture's VERSION 3 note says:
+			// "an active answer may leave the `scope` key out, as RFC 7662
+			// allows, and a client reads the absence exactly as `"scope":""`
+			// [...] The center itself always sends the key (auth-service#4),
+			// so these cases are a client's obligation only and are not ones
+			// the center can produce." Cases: session-route-with-token-lacking-
+			// scope-key, scoped-route-with-token-lacking-scope-key and
+			// gateway-active-operator-lacking-scope-key. Not skipped: for the
+			// same token the center's real answer must equal the fixture body
+			// plus "scope":"", proving the only difference is the key the
+			// center always adds.
+			t.Run(c.Name+"/active-center-adds-scope-key", func(t *testing.T) {
+				var doc map[string]interface{}
+				if err := json.Unmarshal([]byte(c.Center.Body), &doc); err != nil {
+					t.Fatal(err)
+				}
+				if _, has := doc["scope"]; has {
+					t.Fatalf("fixture body unexpectedly has a scope key: %s", c.Center.Body)
+				}
+				doc["scope"] = ""
+				wantJSON, err := json.Marshal(doc)
+				if err != nil {
+					t.Fatal(err)
+				}
+				token := signTestToken(testPrivateKey, testTokenOptions{
+					sub:           want.Sub,
+					scopeRaw:      "",
+					expiresAtUnix: want.Exp,
+				})
+				rec := introspect(t, router, token, testIntrospectionSecret, true)
+				if rec.Code != c.Center.Status {
+					t.Fatalf("got %d, fixture says the center answers %d", rec.Code, c.Center.Status)
+				}
+				assertBodyEquals(t, rec.Body.String(), string(wantJSON))
+			})
 
 		case classInactive:
 			t.Run(c.Name+"/inactive", func(t *testing.T) {
@@ -256,16 +340,20 @@ func TestCenterProducesEveryFixtureResponse(t *testing.T) {
 	// whose center response this file does not understand, the totals move and
 	// the run fails rather than checking less than it did yesterday.
 	for class, want := range map[centerClass]int{
-		classNotApplicable: 9, // the center is never called
-		classActive:        12,
-		classInactive:      4,
-		classCallerSecret:  2,
-		classClientOnly:    6, // transport failures, a 500, an HTML body
+		classNotApplicable:    21, // the center is never called (incl. 4 multi-line Authorization cases)
+		classActive:           16,
+		classActiveNoScopeKey: 3, // client-only: the center always sends `scope`
+		classInactive:         4,
+		classCallerSecret:     2,
+		classClientOnly:       6, // transport failures, a 500, an HTML body
 	} {
 		if counts[class] != want {
 			t.Errorf("class %d: found %d fixture cases, expected %d — a case was added, removed or changed in meta; "+
 				"re-read fixtures/introspection.json and update testdata/SOURCE.txt", class, counts[class], want)
 		}
+	}
+	if multiLine != 4 {
+		t.Errorf("found %d cases with more than one Authorization line, expected 4 (three calling-service, one gateway)", multiLine)
 	}
 }
 
@@ -317,7 +405,11 @@ func TestVendoredFixtureIsTheExactCopyItClaimsToBe(t *testing.T) {
 			"active-with-irregular-scope-whitespace",
 			"active-with-multi-value-scope",
 			"active-with-required-scope",
+			"active-with-scope-differing-only-in-case",
+			"active-with-scope-that-is-a-prefix-of-required",
 			"active-without-required-scope",
+			"bearer-with-empty-token",
+			"bearer-with-internal-whitespace",
 			"center-rejects-our-caller-secret",
 			"center-returns-500",
 			"center-returns-malformed-json",
@@ -325,6 +417,8 @@ func TestVendoredFixtureIsTheExactCopyItClaimsToBe(t *testing.T) {
 			"center-unreachable",
 			"gateway-active-machine",
 			"gateway-active-operator",
+			"gateway-active-operator-lacking-scope-key",
+			"gateway-bearer-with-empty-token",
 			"gateway-center-rejects-our-caller-secret",
 			"gateway-center-unreachable",
 			"gateway-inactive-token",
@@ -332,19 +426,32 @@ func TestVendoredFixtureIsTheExactCopyItClaimsToBe(t *testing.T) {
 			"gateway-kind-operator-with-machine-subject",
 			"gateway-no-header",
 			"gateway-non-bearer-scheme",
+			"gateway-two-authorization-lines",
+			"head-on-guarded-route-with-no-header",
+			"head-on-guarded-route-with-valid-token",
+			"head-on-public-get",
 			"inactive-token-on-guarded-route",
 			"inactive-token-on-public-get",
 			"kind-disagrees-with-sub-prefix",
+			"lowercase-bearer-scheme",
+			"lowercase-route-method",
 			"mutating-route-with-no-declared-scope",
 			"mutating-route-with-no-declared-scope-and-inactive-token",
 			"mutating-route-with-no-declared-scope-and-no-header",
 			"no-header-on-guarded-route",
 			"non-bearer-scheme-on-guarded-route",
 			"operator-on-public-get",
+			"options-on-guarded-route-with-no-header",
+			"options-with-no-declared-scope",
+			"scoped-route-with-token-lacking-scope-key",
 			"session-route-with-inactive-token",
 			"session-route-with-no-header",
 			"session-route-with-scopeless-token",
+			"session-route-with-token-lacking-scope-key",
 			"token-on-public-get-while-center-is-down",
+			"two-authorization-lines",
+			"two-authorization-lines-on-public-get",
+			"two-authorization-lines-second-empty",
 			"visitor-on-public-get",
 		}
 		if !reflect.DeepEqual(got, want) {
