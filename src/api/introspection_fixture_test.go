@@ -137,12 +137,12 @@ func TestFixtureContractNamesMatchTheRoute(t *testing.T) {
 type centerClass int
 
 const (
-	classNotApplicable centerClass = iota // the center is not called at all
-	classActive                           // a 200 the center produces for a good token
-	classInactive                         // the 200 {"active":false}
-	classCallerSecret                     // the 401 about OUR caller secret
-	classClientOnly                       // transport/5xx/garbage: a stub's job, not the center's
-	classActiveNoScopeKey                 // an active body WITHOUT `scope`: a client obligation, never the center's output
+	classNotApplicable    centerClass = iota // the center is not called at all
+	classActive                              // a 200 the center produces for a good token
+	classInactive                            // the 200 {"active":false}
+	classCallerSecret                        // the 401 about OUR caller secret
+	classClientOnly                          // transport/5xx/garbage: a stub's job, not the center's
+	classActiveNoScopeKey                    // an active body WITHOUT `scope`: a client obligation, never the center's output
 )
 
 // authorizationLines decodes request.authorization: a string is one header
