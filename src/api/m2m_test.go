@@ -8,6 +8,7 @@ package api
 
 import (
 	"bytes"
+	"context"
 	"crypto/rsa"
 	"crypto/x509"
 	"encoding/base64"
@@ -445,6 +446,8 @@ func TestM2MTokenWithoutALifetimeIsAFailedMint(t *testing.T) {
 			router := newM2MTestRouter(t, testAuthConfig(), clerkM2MConfig(clerk, clock))
 
 			assertM2MError(t, requestM2M(t, router, "POST", testAutomationCallerSecret, true), 503, m2mMintFailed)
+			// Past the failure backoff, so a second attempt is allowed.
+			clock.Advance(m2mRetryBackoff)
 			requestM2M(t, router, "POST", testAutomationCallerSecret, true)
 			if clerk.calls() != 2 {
 				t.Errorf("the unusable token was cached (calls: %d, want 2)", clerk.calls())
@@ -517,8 +520,10 @@ func TestM2MStaleButValidFallback(t *testing.T) {
 	clock.Advance(time.Second)
 	assertM2MError(t, requestM2M(t, router, "POST", testAutomationCallerSecret, true), 503, m2mMintFailed)
 
-	// And it recovers: Clerk back, next request mints.
+	// And it recovers: Clerk back and the failure backoff over, the next
+	// request mints.
 	clerk.setFail(false)
+	clock.Advance(m2mRetryBackoff)
 	fresh, _ := decodeMinted(t, requestM2M(t, router, "POST", testAutomationCallerSecret, true))
 	if fresh == first {
 		t.Fatal("after recovery the expired token was served")
@@ -819,4 +824,195 @@ func (f *fakeClerk) snapshot() []clerkRequest {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	return append([]clerkRequest(nil), f.requests...)
+}
+
+// TestM2MOptionsIsTheCORSPreflight documents the one non-POST method that is
+// not a 405: the service-wide OPTIONS catch-all answers 204 before any
+// handler runs. It carries no token, reaches no Clerk, and corsMiddleware
+// does not allow the caller-secret header, so a browser can still never send
+// one.
+func TestM2MOptionsIsTheCORSPreflight(t *testing.T) {
+	clock := newFakeClock()
+	clerk := newFakeClerk(t, clock)
+	router := newM2MTestRouter(t, testAuthConfig(), clerkM2MConfig(clerk, clock))
+
+	rec := requestM2M(t, router, http.MethodOptions, testAutomationCallerSecret, true)
+	if rec.Code != http.StatusNoContent || rec.Body.Len() != 0 {
+		t.Fatalf("OPTIONS: got %d %q, want an empty 204", rec.Code, rec.Body.String())
+	}
+	if strings.Contains(strings.ToLower(rec.Header().Get("Access-Control-Allow-Headers")), strings.ToLower(M2MCallerSecretHeader)) {
+		t.Errorf("CORS allows %s; no browser may ever send a caller secret", M2MCallerSecretHeader)
+	}
+	if clerk.calls() != 0 {
+		t.Errorf("a preflight reached Clerk")
+	}
+}
+
+// TestM2MFailedMintsBackOff: after a failed mint, requests inside the next
+// 10 s do not call Clerk. With nothing valid in hand they get 503; with a
+// stale-but-unexpired token they get that token.
+func TestM2MFailedMintsBackOff(t *testing.T) {
+	t.Run("nothing cached", func(t *testing.T) {
+		clock := newFakeClock()
+		clerk := newFakeClerk(t, clock)
+		clerk.setFail(true)
+		router := newM2MTestRouter(t, testAuthConfig(), clerkM2MConfig(clerk, clock))
+
+		assertM2MError(t, requestM2M(t, router, "POST", testAutomationCallerSecret, true), 503, m2mMintFailed)
+		clock.Advance(m2mRetryBackoff - time.Second)
+		for i := 0; i < 5; i++ {
+			assertM2MError(t, requestM2M(t, router, "POST", testAutomationCallerSecret, true), 503, m2mMintFailed)
+		}
+		if clerk.calls() != 1 {
+			t.Fatalf("Clerk was called %d times inside the backoff window, want 1", clerk.calls())
+		}
+		// The backoff is per caller: ai-service has not failed yet.
+		assertM2MError(t, requestM2M(t, router, "POST", testAICallerSecret, true), 503, m2mMintFailed)
+		if clerk.calls() != 2 {
+			t.Fatalf("one caller's backoff held back another (calls: %d, want 2)", clerk.calls())
+		}
+
+		clock.Advance(time.Second)
+		clerk.setFail(false)
+		decodeMinted(t, requestM2M(t, router, "POST", testAutomationCallerSecret, true))
+		if clerk.calls() != 3 {
+			t.Fatalf("after the backoff the next request should mint (calls: %d, want 3)", clerk.calls())
+		}
+	})
+
+	t.Run("stale token in hand", func(t *testing.T) {
+		clock := newFakeClock()
+		clerk := newFakeClerk(t, clock)
+		router := newM2MTestRouter(t, testAuthConfig(), clerkM2MConfig(clerk, clock))
+
+		first, _ := decodeMinted(t, requestM2M(t, router, "POST", testAutomationCallerSecret, true))
+		clerk.setFail(true)
+		clock.Advance(13 * time.Hour)
+		decodeMinted(t, requestM2M(t, router, "POST", testAutomationCallerSecret, true)) // fails, serves stale
+		for i := 0; i < 5; i++ {
+			tok, _ := decodeMinted(t, requestM2M(t, router, "POST", testAutomationCallerSecret, true))
+			if tok != first {
+				t.Fatal("inside the backoff the stale token was not served")
+			}
+		}
+		if clerk.calls() != 2 {
+			t.Fatalf("Clerk was called %d times, want 2 (one mint, one failed refresh)", clerk.calls())
+		}
+	})
+}
+
+func newM2MTestHandler(t *testing.T, cfg M2MConfig) *m2mHandler {
+	t.Helper()
+	h, err := newM2MHandler(cfg, testSharedSecret, testIntrospectionSecret, testPublicKey)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return h
+}
+
+// requestM2MUntilCancelled sends a request whose context is cancelled as soon
+// as the fake Clerk has received the mint: a caller whose 1 s timeout fired.
+func requestM2MUntilCancelled(h http.Handler, clerk *fakeClerk) {
+	ctx, cancel := context.WithCancel(context.Background())
+	done := make(chan struct{})
+	go func() {
+		defer close(done)
+		req := httptest.NewRequest(http.MethodPost, "/auth/v1/m2m-token", nil).WithContext(ctx)
+		req.Header.Set(M2MCallerSecretHeader, testAutomationCallerSecret)
+		h.ServeHTTP(httptest.NewRecorder(), req)
+	}()
+	<-clerk.arrived
+	cancel()
+	<-done
+}
+
+// TestM2MMintIsDetachedFromTheRequest: the first mint after a restart is the
+// slow one, and a caller's 1 s timeout fires during it. That must not cancel
+// the mint: the caller's retry joins it, and if nobody is waiting when it
+// lands, the token is cached anyway.
+func TestM2MMintIsDetachedFromTheRequest(t *testing.T) {
+	t.Run("a retry joins the mint its caller gave up on", func(t *testing.T) {
+		clock := newFakeClock()
+		clerk := newFakeClerk(t, clock)
+		clerk.gate = make(chan struct{})
+		clerk.arrived = make(chan struct{}, 10)
+		h := newM2MTestHandler(t, clerkM2MConfig(clerk, clock))
+
+		requestM2MUntilCancelled(h, clerk)
+
+		retry := make(chan *httptest.ResponseRecorder)
+		go func() {
+			req := httptest.NewRequest(http.MethodPost, "/auth/v1/m2m-token", nil)
+			req.Header.Set(M2MCallerSecretHeader, testAutomationCallerSecret)
+			rec := httptest.NewRecorder()
+			h.ServeHTTP(rec, req)
+			retry <- rec
+		}()
+		time.Sleep(50 * time.Millisecond) // let the retry reach the in-flight mint
+		close(clerk.gate)
+		decodeMinted(t, <-retry)
+		if clerk.calls() != 1 {
+			t.Fatalf("the retry started a second mint (calls: %d, want 1)", clerk.calls())
+		}
+	})
+
+	t.Run("a token that lands after its caller left is cached", func(t *testing.T) {
+		clock := newFakeClock()
+		clerk := newFakeClerk(t, clock)
+		clerk.gate = make(chan struct{})
+		clerk.arrived = make(chan struct{}, 10)
+		h := newM2MTestHandler(t, clerkM2MConfig(clerk, clock))
+
+		requestM2MUntilCancelled(h, clerk)
+		close(clerk.gate)
+
+		cache := h.callers[0].cache
+		deadline := time.Now().Add(2 * time.Second)
+		for {
+			cache.mu.Lock()
+			idle, cached := cache.inflight == nil, cache.cached != nil
+			cache.mu.Unlock()
+			if idle {
+				if !cached {
+					t.Fatal("the mint finished after its caller left and its token was thrown away")
+				}
+				break
+			}
+			if time.Now().After(deadline) {
+				t.Fatal("the mint never finished")
+			}
+			time.Sleep(5 * time.Millisecond)
+		}
+		rec := httptest.NewRecorder()
+		req := httptest.NewRequest(http.MethodPost, "/auth/v1/m2m-token", nil)
+		req.Header.Set(M2MCallerSecretHeader, testAutomationCallerSecret)
+		h.ServeHTTP(rec, req)
+		decodeMinted(t, rec)
+		if clerk.calls() != 1 {
+			t.Fatalf("the next request minted again (calls: %d, want 1)", clerk.calls())
+		}
+	})
+}
+
+// TestM2MMintHasItsOwnTimeout: a Clerk that never answers turns into a 503
+// once the mint's own timeout passes, not a request that hangs forever
+// (a detached mint has no request context to end it).
+func TestM2MMintHasItsOwnTimeout(t *testing.T) {
+	clock := newFakeClock()
+	clerk := newFakeClerk(t, clock)
+	clerk.gate = make(chan struct{})
+	clerk.arrived = make(chan struct{}, 10)
+	t.Cleanup(func() { close(clerk.gate) })
+	cfg := clerkM2MConfig(clerk, clock)
+	cfg.mintTimeout = 50 * time.Millisecond
+	router := newM2MTestRouter(t, testAuthConfig(), cfg)
+
+	result := make(chan *httptest.ResponseRecorder, 1)
+	go func() { result <- requestM2M(t, router, "POST", testAutomationCallerSecret, true) }()
+	select {
+	case rec := <-result:
+		assertM2MError(t, rec, 503, m2mMintFailed)
+	case <-time.After(3 * time.Second):
+		t.Fatal("a mint against a Clerk that never answers did not time out")
+	}
 }

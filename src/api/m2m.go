@@ -36,7 +36,7 @@ import (
 )
 
 // M2MCallerSecretHeader is the header a calling service authenticates with.
-const M2MCallerSecretHeader = "X-Service-Secret"
+const M2MCallerSecretHeader = "X-M2M-Caller-Secret"
 
 // m2mCallerScopes is the fixed table decision 22 asks for. A caller requests
 // nothing; changing what a machine may do is a pull request against this
@@ -64,10 +64,16 @@ const devM2MKeyID = "dev-only-do-not-use"
 // clerkM2MTokensURL is Clerk's Backend API mint endpoint.
 const clerkM2MTokensURL = "https://api.clerk.com/v1/m2m_tokens"
 
-// clerkMintTimeout bounds one call to Clerk. Minting happens twice a day per
-// caller, so this is not the hot path; it only has to be finite, so that a
-// hung Clerk turns into a 503 (or a stale token) instead of a hung caller.
-const clerkMintTimeout = 10 * time.Second
+// m2mMintTimeout bounds one mint. Minting happens twice a day per caller, so
+// this is not the hot path; it only has to be finite, so that a hung Clerk
+// turns into a 503 (or a stale token) instead of a mint that never ends. It
+// is far above a caller's own 1 s timeout on purpose: the mint is detached,
+// and the caller's retry joins it.
+const m2mMintTimeout = 10 * time.Second
+
+// m2mRetryBackoff spaces failed mints per caller, so a Clerk outage costs one
+// Clerk call per caller per 10 s rather than one per request.
+const m2mRetryBackoff = 10 * time.Second
 
 const (
 	m2mUnknownCaller = "unknown caller"
@@ -97,9 +103,10 @@ type M2MConfig struct {
 	Issuer string
 
 	// Test seams; zero values mean production behaviour.
-	clerkURL   string
-	httpClient *http.Client
-	now        func() time.Time
+	clerkURL    string
+	httpClient  *http.Client
+	now         func() time.Time
+	mintTimeout time.Duration
 }
 
 // ReadM2MConfig reads the per-caller environment and DEV_M2M_SIGNING_KEY_FILE,
@@ -222,7 +229,8 @@ func newM2MHandler(cfg M2MConfig, sharedSecret, introspectionSecret string, veri
 	}
 	client := cfg.httpClient
 	if client == nil {
-		client = &http.Client{Timeout: clerkMintTimeout}
+		// No client timeout: the mint's own context carries m2mMintTimeout.
+		client = &http.Client{}
 	}
 
 	h := &m2mHandler{}
@@ -240,7 +248,7 @@ func newM2MHandler(cfg M2MConfig, sharedSecret, introspectionSecret string, veri
 		h.callers = append(h.callers, &m2mCaller{
 			name:   c.Name,
 			secret: []byte(c.Secret),
-			cache:  &m2mTokenCache{mint: mint, now: now},
+			cache:  &m2mTokenCache{mint: mint, now: now, mintTimeout: cfg.mintTimeout},
 		})
 	}
 	return h, nil
@@ -314,10 +322,15 @@ type cachedM2MToken struct {
 type m2mTokenCache struct {
 	mint func(context.Context) (string, error)
 	now  func() time.Time
+	// mintTimeout bounds one mint; zero means m2mMintTimeout.
+	mintTimeout time.Duration
 
 	mu       sync.Mutex
 	cached   *cachedM2MToken
 	inflight *m2mMint
+	// failedAt is when the last mint failed; zero after a success. No new
+	// mint starts within m2mRetryBackoff of it.
+	failedAt time.Time
 }
 
 type m2mMint struct {
@@ -326,14 +339,28 @@ type m2mMint struct {
 	err    error
 }
 
+// errMintBackoff is what a request gets inside the backoff window with no
+// valid token in hand. It is logged, never sent: the body is the flat 503.
+var errMintBackoff = errors.New("the last mint failed less than 10 s ago; not calling Clerk again yet")
+
 func (c *m2mTokenCache) get(ctx context.Context) (cachedM2MToken, error) {
 	c.mu.Lock()
-	if c.cached != nil && c.now().Before(c.cached.refreshAt) {
+	now := c.now()
+	if c.cached != nil && now.Before(c.cached.refreshAt) {
 		tok := *c.cached
 		c.mu.Unlock()
 		return tok, nil
 	}
 	call := c.inflight
+	if call == nil && !c.failedAt.IsZero() && now.Before(c.failedAt.Add(m2mRetryBackoff)) {
+		// A Clerk outage must not turn every scheduler tick into a Clerk
+		// call. Inside the window the answer is whatever is already in hand.
+		defer c.mu.Unlock()
+		if c.cached != nil && now.Before(c.cached.expiresAt) {
+			return *c.cached, nil
+		}
+		return cachedM2MToken{}, errMintBackoff
+	}
 	if call == nil {
 		call = &m2mMint{done: make(chan struct{})}
 		c.inflight = call
@@ -344,8 +371,8 @@ func (c *m2mTokenCache) get(ctx context.Context) (cachedM2MToken, error) {
 	select {
 	case <-call.done:
 	case <-ctx.Done():
-		// The caller gave up. The mint carries on in the background and its
-		// result is cached for the next request, which is the one that pays.
+		// The caller gave up (its own timeout is 1 s). The mint carries on,
+		// its result is cached, and the caller's retry joins it or finds it.
 		return cachedM2MToken{}, ctx.Err()
 	}
 	if call.err == nil {
@@ -363,11 +390,18 @@ func (c *m2mTokenCache) get(ctx context.Context) (cachedM2MToken, error) {
 	return cachedM2MToken{}, call.err
 }
 
-// run mints on a context of its own, not the request's: every waiter shares
-// this mint, so the first requester hanging up must not fail the others.
-// The Clerk client's timeout is what bounds it.
+// run mints detached from every request: on a background context under its
+// own timeout, so the requester hanging up cancels nothing, later requests
+// join it, and a token that arrives after everyone left is still cached.
 func (c *m2mTokenCache) run(call *m2mMint) {
-	token, err := c.mint(context.Background())
+	timeout := c.mintTimeout
+	if timeout == 0 {
+		timeout = m2mMintTimeout
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), timeout)
+	defer cancel()
+
+	token, err := c.mint(ctx)
 	var tok cachedM2MToken
 	if err == nil {
 		tok, err = cacheEntryFrom(token)
@@ -376,6 +410,9 @@ func (c *m2mTokenCache) run(call *m2mMint) {
 	c.mu.Lock()
 	if err == nil {
 		c.cached = &tok
+		c.failedAt = time.Time{}
+	} else {
+		c.failedAt = c.now()
 	}
 	call.result, call.err = tok, err
 	c.inflight = nil

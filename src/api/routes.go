@@ -86,7 +86,7 @@ func SetUpRouter(cfg Config) (*mux.Router, error) {
 	// bare, same listener, never behind Caddy (decision 22 keeps decision 9's
 	// network picture), and its callers are headless services on the host.
 	// POST only, so a GET is a 405 rather than an answer. corsMiddleware does
-	// not allow X-Service-Secret, and that is deliberate: no browser caller.
+	// not allow X-M2M-Caller-Secret, and that is deliberate: no browser caller.
 	r.Handle("/auth/v1/m2m-token", m2m).Methods(http.MethodPost)
 
 	// GET /auth/v1/status is also mounted bare: decision 8 calls it "the

@@ -54,7 +54,7 @@ checked — every other service's suite stands up a stub center instead.
 |---|---|---|
 | `GET /auth/v1/token` | `X-Auth-Service-Secret` header | st-gateway fetches the agent token to inject. Never gets a public route — see decision 9. |
 | `POST /auth/v1/introspect` | `X-Introspection-Secret` header | **Token introspection** — form body `token=<jwt>`, answers `{active}` or `{active, sub, scope, exp, kind}`. See below. |
-| `POST /auth/v1/m2m-token` | `X-Service-Secret` header (per caller) | **Machine token minting** — empty body, answers `{token, expires_at}`. See below. |
+| `POST /auth/v1/m2m-token` | `X-M2M-Caller-Secret` header (per caller) | **Machine token minting** — empty body, answers `{token, expires_at}`. See below. |
 | `GET /auth/v1/status`, `GET /api/auth/v1/status` | none | `{state, agentSymbol, resetDate, nextPredictedReset}` — never a token |
 | `POST /api/auth/v1/agent-token` | Clerk `agent:reset` scope | **Restore Token** — body `{agentToken}`, regenerates the existing agent's token |
 | `POST /api/auth/v1/register` | Clerk `agent:reset` scope | **Reset Agent** — body `{accountToken, symbol, faction, email?}`, mints a new agent |
@@ -117,26 +117,34 @@ against what its own route declares. The contract is fixed by
 presents its own caller secret and gets back a bearer token for its outbound calls.
 
     curl -s -X POST localhost:$PORT/auth/v1/m2m-token \
-      -H "X-Service-Secret: $M2M_CALLER_SECRET_AUTOMATION_SERVICE"
+      -H "X-M2M-Caller-Secret: $M2M_CALLER_SECRET_AUTOMATION_SERVICE"
 
 | Situation | Status | Body |
 |---|---|---|
 | Known secret, token minted or served from cache | `200` | `{"token":"<jwt>","expires_at":<unix seconds>}` |
-| Missing, empty or unknown secret | `401` | `{"error":"unknown caller"}` |
+| Missing, empty or unknown secret; caller disabled | `401` | `{"error":"unknown caller"}` |
 | Minting failed and no cached token is still unexpired | `503` | `{"error":"the token could not be minted"}` |
-| Any method but `POST` | `405` | — |
+| `OPTIONS` | `204` | — (the service-wide CORS preflight catch-all; CORS does not allow the caller-secret header) |
+| Any other method | `405` | — |
 
 - **The secret is the identity.** There is no body field naming a caller or asking for a
   scope. Scopes are a fixed table in `src/api/m2m.go`: `automation-service` gets
   `fleet:control`; `ai-service` gets `events:write planner:advise`. Changing it is a pull
   request here.
-- **Tokens live 24 hours** and are cached in memory per caller, served again until half the
-  lifetime (read from the token's own `iat`/`exp`) has passed, then re-minted on the next
-  request. Concurrent requests share one mint. If a mint fails while the cached token is
-  still unexpired, the cached token is served. Nothing is persisted, so a restart costs each
+- **Tokens live 24 hours** and are cached in memory per caller, served again until the
+  refresh point `iat + (exp - iat) / 2`, read from the token itself (callers use the same
+  point), then re-minted on the next request. Nothing is persisted, so a restart costs each
   caller one mint.
+- **A mint is detached and single-flight.** It runs on a background context under its own
+  10 s timeout, never the request's, so a caller giving up after its 1 s timeout cancels
+  nothing: its retry joins the mint in flight, and a token that lands after everyone left is
+  still cached.
+- **Failures back off and fall back.** Failed mints are spaced at least 10 s apart per
+  caller; inside that window no request reaches Clerk. If a mint fails, or is backing off,
+  while the cached token is still unexpired, the cached token is served; with nothing valid
+  in hand the answer is `503`.
 - **Production** calls Clerk's `POST /v1/m2m_tokens` with that caller's own Machine Secret
-  Key, so `sub` names the caller's Machine (`mch_…`). 10 s timeout.
+  Key, so `sub` names the caller's Machine (`mch_…`).
 - **Local dev** (`DEV_M2M_SIGNING_KEY_FILE` set) signs the same shape of JWT with the
   committed dev private key: `sub` is `mch_local_<caller>`, `kid` is `dev-only-do-not-use`,
   `iss` is `CLERK_ISSUER` when set. This service's own introspection answers it
@@ -173,7 +181,7 @@ presents its own caller secret and gets back a bearer token for its outbound cal
   - Setting it to the same value as `AUTH_SERVICE_SHARED_SECRET` **is** fatal at startup. That
     cannot happen by accident in production today, so failing loudly costs nothing.
 - `M2M_CALLER_SECRET_AUTOMATION_SERVICE`, `M2M_CALLER_SECRET_AI_SERVICE` — the secret each
-  caller presents to `POST /auth/v1/m2m-token` as `X-Service-Secret`. **Unset disables that
+  caller presents to `POST /auth/v1/m2m-token` as `X-M2M-Caller-Secret`. **Unset or empty disables that
   caller** (its requests get `401`); it is not a startup error. Fatal at startup: equal to
   `AUTH_SERVICE_SHARED_SECRET`, to `AUTH_INTROSPECTION_SECRET` (every service holds that one,
   so every service could mint), or to the other caller's secret (either could mint as the
