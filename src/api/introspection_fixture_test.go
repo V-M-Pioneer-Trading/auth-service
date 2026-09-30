@@ -91,8 +91,8 @@ func loadFixture(t *testing.T) fixtureFile {
 	if err := json.Unmarshal(raw, &f); err != nil {
 		t.Fatalf("the vendored fixture does not parse: %v", err)
 	}
-	if f.Version != 4 {
-		t.Fatalf("vendored fixture is version %d; this test was written against version 4 — re-read it before re-copying", f.Version)
+	if f.Version != 5 {
+		t.Fatalf("vendored fixture is version %d; this test was written against version 5 — re-read it before re-copying", f.Version)
 	}
 	return f
 }
@@ -143,6 +143,7 @@ const (
 	classCallerSecret                        // the 401 about OUR caller secret
 	classClientOnly                          // transport/5xx/garbage: a stub's job, not the center's
 	classActiveNoScopeKey                    // an active body WITHOUT `scope`: a client obligation, never the center's output
+	classDuplicateKey                        // a 200 naming a top-level key twice: never the center's output
 )
 
 // authorizationLines decodes request.authorization: a string is one header
@@ -164,6 +165,70 @@ func authorizationLines(t *testing.T, raw json.RawMessage) []string {
 	return many
 }
 
+// topLevelMembers returns the raw members of a JSON object body in order,
+// INCLUDING repeats, which a map or struct decode would silently collapse.
+func topLevelMembers(body string) (keys []string, values []json.RawMessage, ok bool) {
+	dec := json.NewDecoder(strings.NewReader(body))
+	if tok, err := dec.Token(); err != nil || tok != json.Delim('{') {
+		return nil, nil, false
+	}
+	for dec.More() {
+		tok, err := dec.Token()
+		key, isString := tok.(string)
+		if err != nil || !isString {
+			return nil, nil, false
+		}
+		var raw json.RawMessage
+		if err := dec.Decode(&raw); err != nil {
+			return nil, nil, false
+		}
+		keys = append(keys, key)
+		values = append(values, raw)
+	}
+	return keys, values, true
+}
+
+// duplicateTopLevelKey reports the first top-level key the body names twice.
+func duplicateTopLevelKey(body string) (string, bool) {
+	keys, _, ok := topLevelMembers(body)
+	if !ok {
+		return "", false
+	}
+	seen := map[string]bool{}
+	for _, k := range keys {
+		if seen[k] {
+			return k, true
+		}
+		seen[k] = true
+	}
+	return "", false
+}
+
+// withoutDuplicateKeys is the well-formed twin of a body with repeated
+// top-level keys: the FIRST occurrence of each key is kept, later ones dropped,
+// every value byte-for-byte as the fixture wrote it.
+func withoutDuplicateKeys(t *testing.T, body string) string {
+	t.Helper()
+	keys, values, ok := topLevelMembers(body)
+	if !ok {
+		t.Fatalf("body is not a JSON object: %s", body)
+	}
+	seen := map[string]bool{}
+	var parts []string
+	for i, k := range keys {
+		if seen[k] {
+			continue
+		}
+		seen[k] = true
+		kb, err := json.Marshal(k)
+		if err != nil {
+			t.Fatal(err)
+		}
+		parts = append(parts, string(kb)+":"+string(values[i]))
+	}
+	return "{" + strings.Join(parts, ",") + "}"
+}
+
 func classify(c fixtureCase) (centerClass, *centerBody) {
 	switch {
 	case c.Center.NotCalled:
@@ -179,6 +244,11 @@ func classify(c fixtureCase) (centerClass, *centerBody) {
 	if err := json.Unmarshal([]byte(c.Center.Body), &body); err != nil {
 		// A 200 whose body is not the contract (the malformed-JSON case).
 		return classClientOnly, nil
+	}
+	if _, dup := duplicateTopLevelKey(c.Center.Body); dup {
+		// encoding/json keeps the last of a repeated key and says nothing, so the
+		// raw body is scanned for it.
+		return classDuplicateKey, &body
 	}
 	if !body.Active {
 		return classInactive, nil
@@ -199,8 +269,8 @@ func TestCenterProducesEveryFixtureResponse(t *testing.T) {
 	router, _, _ := newTestRouter(t)
 
 	all := append(append([]fixtureCase{}, f.Cases...), f.GatewayCases...)
-	if len(f.Cases) != 40 || len(f.GatewayCases) != 12 || len(all) != 52 {
-		t.Fatalf("expected 52 fixture cases (40 calling-service + 12 gateway), found %d (%d + %d) — re-read meta before re-copying",
+	if len(f.Cases) != 41 || len(f.GatewayCases) != 13 || len(all) != 54 {
+		t.Fatalf("expected 54 fixture cases (41 calling-service + 13 gateway), found %d (%d + %d) — re-read meta before re-copying",
 			len(all), len(f.Cases), len(f.GatewayCases))
 	}
 
@@ -266,6 +336,39 @@ func TestCenterProducesEveryFixtureResponse(t *testing.T) {
 					t.Fatalf("got %d, fixture says the center answers %d", rec.Code, c.Center.Status)
 				}
 				assertBodyEquals(t, rec.Body.String(), string(wantJSON))
+			})
+
+		case classDuplicateKey:
+			// UNPRODUCIBLE BY CONSTRUCTION. Version 5 `center-returns-duplicate-key`
+			// and `gateway-center-returns-duplicate-key` carry a 200 body naming
+			// `sub` twice. The center marshals a struct, so it can never write a
+			// repeated key; the cases pin how a CLIENT reads a body it cannot
+			// trust. Not skipped: for a token carrying the FIRST `sub` the
+			// center's real answer must equal the fixture body with the duplicate
+			// removed, i.e. the center produces the well-formed twin.
+			t.Run(c.Name+"/center-produces-the-well-formed-twin", func(t *testing.T) {
+				dup, _ := duplicateTopLevelKey(c.Center.Body)
+				if dup != "sub" {
+					t.Fatalf("fixture repeats %q; this test only understands a repeated `sub`: %s", dup, c.Center.Body)
+				}
+				twin := withoutDuplicateKeys(t, c.Center.Body)
+				var first centerBody
+				if err := json.Unmarshal([]byte(twin), &first); err != nil {
+					t.Fatal(err)
+				}
+				if first.Sub == want.Sub {
+					t.Fatalf("the duplicated `sub` values are equal (%q); the case would not distinguish first from last", first.Sub)
+				}
+				token := signTestToken(testPrivateKey, testTokenOptions{
+					sub:           first.Sub,
+					scopeRaw:      first.Scope,
+					expiresAtUnix: first.Exp,
+				})
+				rec := introspect(t, router, token, testIntrospectionSecret, true)
+				if rec.Code != c.Center.Status {
+					t.Fatalf("got %d, fixture says the center answers %d", rec.Code, c.Center.Status)
+				}
+				assertBodyEquals(t, rec.Body.String(), twin)
 			})
 
 		case classInactive:
@@ -345,6 +448,7 @@ func TestCenterProducesEveryFixtureResponse(t *testing.T) {
 		classActiveNoScopeKey: 3, // client-only: the center always sends `scope`
 		classInactive:         4,
 		classCallerSecret:     2,
+		classDuplicateKey:     2, // unproducible: the center marshals a struct (one calling-service, one gateway)
 		classClientOnly:       6, // transport failures, a 500, an HTML body
 	} {
 		if counts[class] != want {
@@ -412,6 +516,7 @@ func TestVendoredFixtureIsTheExactCopyItClaimsToBe(t *testing.T) {
 			"bearer-with-internal-whitespace",
 			"center-rejects-our-caller-secret",
 			"center-returns-500",
+			"center-returns-duplicate-key",
 			"center-returns-malformed-json",
 			"center-times-out",
 			"center-unreachable",
@@ -420,6 +525,7 @@ func TestVendoredFixtureIsTheExactCopyItClaimsToBe(t *testing.T) {
 			"gateway-active-operator-lacking-scope-key",
 			"gateway-bearer-with-empty-token",
 			"gateway-center-rejects-our-caller-secret",
+			"gateway-center-returns-duplicate-key",
 			"gateway-center-unreachable",
 			"gateway-inactive-token",
 			"gateway-kind-machine-with-user-subject",
