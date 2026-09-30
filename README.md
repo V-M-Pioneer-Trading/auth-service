@@ -146,8 +146,9 @@ presents its own caller secret and gets back a bearer token for its outbound cal
   window. If a mint fails, or is backing off, while the cached token is still unexpired, the
   cached token is served; with nothing valid in hand the answer is `503`.
 - **A minted token must have a usable lifetime** or it counts as a failed mint and is not
-  cached: `iat` and `exp` present, both within `0 … 2^53`, at least 60 s apart, and `exp`
-  still in the future.
+  cached: `iat` and `exp` present, both within `0 … 2^53`, at least 60 s apart, at most 7 days
+  apart, and the refresh point still in the future. A failed mint is logged once, by the mint
+  itself, since a background refresh has no request to report it.
 - **Production** calls Clerk's `POST /v1/m2m_tokens` with that caller's own Machine Secret
   Key, so `sub` names the caller's Machine (`mch_…`). Redirects are never followed (the
   request carries the key), and a failure is logged with Clerk's status only, never its body.

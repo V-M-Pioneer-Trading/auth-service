@@ -270,7 +270,7 @@ func newM2MHandler(cfg M2MConfig, sharedSecret, introspectionSecret string, veri
 		h.callers = append(h.callers, &m2mCaller{
 			name:   c.Name,
 			secret: []byte(c.Secret),
-			cache:  &m2mTokenCache{mint: mint, now: now, mintTimeout: cfg.mintTimeout},
+			cache:  &m2mTokenCache{name: c.Name, mint: mint, now: now, mintTimeout: cfg.mintTimeout},
 		})
 	}
 	return h, nil
@@ -322,8 +322,11 @@ func (h *m2mHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			// Whoever is still reading gets the flat 503; nobody usually is.
 		case errors.Is(err, errMintBackoffRepeat):
 			// Already said once in this backoff window.
+		case errors.Is(err, errMintBackoff):
+			log.Default().Printf("minting a machine token for %s: %v", caller.name, err)
 		default:
-			log.Default().Printf("minting a machine token for %s failed: %v", caller.name, err)
+			// A failed mint. run has already logged it, once, whoever was
+			// waiting; logging here too would repeat it per waiter.
 		}
 		writeM2M(w, http.StatusServiceUnavailable, map[string]string{"error": m2mMintFailed})
 		return
@@ -353,6 +356,8 @@ type cachedM2MToken struct {
 // it; while the cached token is unexpired it gets that token at once and the
 // refresh runs behind it.
 type m2mTokenCache struct {
+	// name is the caller, for the one log line a failed mint writes.
+	name string
 	mint func(context.Context) (string, error)
 	now  func() time.Time
 	// mintTimeout bounds one mint; zero means m2mMintTimeout.
@@ -468,6 +473,11 @@ func (c *m2mTokenCache) run(call *m2mMint) {
 		c.cached = &tok
 		c.failedAt = time.Time{}
 	} else {
+		// Logged here, once per mint, and not by the requests: a refresh
+		// past the refresh point runs behind a request that has already been
+		// answered with the cached token, so no request ever sees this error.
+		// err is ours (status codes, claim checks), never Clerk's body.
+		log.Default().Printf("minting a machine token for %s failed: %v", c.name, err)
 		c.failedAt = c.now()
 		c.backoffLogged = false
 	}
@@ -482,6 +492,11 @@ func (c *m2mTokenCache) run(call *m2mMint) {
 // every request, and every one of those is a billed mint.
 const m2mMinLifetime = 60 // seconds
 
+// m2mMaxLifetime is the longest token worth caching. We ask for 24 h; a
+// token living far longer is not what was asked for, and serving it would
+// stretch the leak window decision 22 accepted as "up to a day".
+const m2mMaxLifetime = 7 * 24 * 60 * 60 // seconds
+
 // maxJWTSeconds bounds `iat` and `exp` before they leave float64. 2^53 is the
 // largest range in which float64 holds every integer exactly, and it is far
 // inside int64; a value past it would convert to garbage (or, past 2^63, to
@@ -491,8 +506,9 @@ const maxJWTSeconds = float64(1 << 53)
 // cacheEntryFrom reads `iat` and `exp` from the token's payload. No signature
 // check: the token came from Clerk over TLS (or from our own key), and this
 // is bookkeeping, not trust. A token whose lifetime cannot be used safely is
-// refused as a failed mint rather than cached: already expired, shorter than
-// m2mMinLifetime, or with a claim outside the range above.
+// refused as a failed mint rather than cached: already expired or past its
+// refresh point, shorter than m2mMinLifetime or longer than m2mMaxLifetime,
+// or with a claim outside the range above.
 func cacheEntryFrom(token string, now time.Time) (cachedM2MToken, error) {
 	parts := strings.Split(token, ".")
 	if len(parts) != 3 {
@@ -521,13 +537,22 @@ func cacheEntryFrom(token string, now time.Time) (cachedM2MToken, error) {
 	if exp-iat < m2mMinLifetime {
 		return cachedM2MToken{}, fmt.Errorf("minted token lives %d s, under the %d s minimum", exp-iat, m2mMinLifetime)
 	}
+	if exp-iat > m2mMaxLifetime {
+		return cachedM2MToken{}, fmt.Errorf("minted token lives %d s, over the %d s maximum", exp-iat, m2mMaxLifetime)
+	}
 	if exp <= now.Unix() {
 		return cachedM2MToken{}, errors.New("minted token is already expired")
+	}
+	// Already past its own refresh point on arrival (a skewed or backdated
+	// `iat`): caching it would start another mint on the very next request.
+	refreshAt := iat + (exp-iat)/2
+	if refreshAt <= now.Unix() {
+		return cachedM2MToken{}, errors.New("minted token is already past its refresh point")
 	}
 	return cachedM2MToken{
 		token:     token,
 		expiresAt: time.Unix(exp, 0),
-		refreshAt: time.Unix(iat+(exp-iat)/2, 0),
+		refreshAt: time.Unix(refreshAt, 0),
 	}, nil
 }
 

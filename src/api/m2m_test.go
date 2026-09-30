@@ -370,11 +370,13 @@ func TestM2MTokenWithoutALifetimeIsAFailedMint(t *testing.T) {
 		"no iat":         {"sub": "mch_x", "exp": 1_900_086_400},
 		"exp before iat": {"sub": "mch_x", "iat": 1_900_000_000, "exp": 1_899_000_000},
 		// The fake clock stands at 1_900_000_000.
-		"already expired":      {"sub": "mch_x", "iat": 1_899_992_800, "exp": 1_899_996_400},
-		"lifetime under 60 s":  {"sub": "mch_x", "iat": 1_900_000_000, "exp": 1_900_000_059},
-		"exp far out of range": {"sub": "mch_x", "iat": 1_900_000_000, "exp": 1e300},
-		"exp past 2^53":        {"sub": "mch_x", "iat": 1_900_000_000, "exp": float64(1 << 60)},
-		"iat negative":         {"sub": "mch_x", "iat": -100, "exp": 1_900_086_400},
+		"already expired":            {"sub": "mch_x", "iat": 1_899_992_800, "exp": 1_899_996_400},
+		"lifetime under 60 s":        {"sub": "mch_x", "iat": 1_900_000_000, "exp": 1_900_000_059},
+		"exp far out of range":       {"sub": "mch_x", "iat": 1_900_000_000, "exp": 1e300},
+		"exp past 2^53":              {"sub": "mch_x", "iat": 1_900_000_000, "exp": float64(1 << 60)},
+		"iat negative":               {"sub": "mch_x", "iat": -100, "exp": 1_900_086_400},
+		"lifetime over 7 days":       {"sub": "mch_x", "iat": 1_900_000_000, "exp": 1_900_604_801},
+		"refresh point already past": {"sub": "mch_x", "iat": 1_899_992_800, "exp": 1_900_003_600},
 	} {
 		t.Run(name, func(t *testing.T) {
 			clock := newFakeClock()
@@ -1232,5 +1234,87 @@ func TestM2MCallerLeavingIsNotAFailure(t *testing.T) {
 	decodeMinted(t, requestM2M(t, h, "POST", testAutomationCallerSecret, true))
 	if clerk.calls() != 1 {
 		t.Fatalf("the mint that outlived its caller was not cached (calls: %d)", clerk.calls())
+	}
+}
+
+// TestM2MSevenDayTokenIsTheLongestAccepted pins the cap from the other side.
+func TestM2MSevenDayTokenIsTheLongestAccepted(t *testing.T) {
+	clock := newFakeClock()
+	clerk := newFakeClerk(t, clock)
+	iat := clock.Now().Unix()
+	clerk.payload = jwt.MapClaims{"sub": "mch_x", "iat": iat, "exp": iat + 7*24*3600}
+	router := newM2MTestRouter(t, testAuthConfig(), clerkM2MConfig(clerk, clock))
+
+	if _, exp := decodeMinted(t, requestM2M(t, router, "POST", testAutomationCallerSecret, true)); exp != iat+7*24*3600 {
+		t.Fatalf("expires_at = %d, want %d", exp, iat+7*24*3600)
+	}
+}
+
+// TestM2MFailedBackgroundRefreshIsLogged: a refresh past the refresh point
+// runs behind a request already answered with the cached token, so no
+// request sees its failure. The mint itself must say so, exactly once, with
+// the caller and Clerk's status and nothing Clerk or the caller wrote.
+func TestM2MFailedBackgroundRefreshIsLogged(t *testing.T) {
+	var buf bytes.Buffer
+	log.SetOutput(&buf)
+	t.Cleanup(func() { log.SetOutput(os.Stderr) })
+
+	clock := newFakeClock()
+	clerk := newFakeClerk(t, clock)
+	h := newM2MTestHandler(t, clerkM2MConfig(clerk, clock))
+	first, _ := decodeMinted(t, requestM2M(t, h, "POST", testAutomationCallerSecret, true))
+
+	clerk.setFail(true)
+	clock.Advance(13 * time.Hour)
+	buf.Reset()
+	if tok, _ := decodeMinted(t, requestM2M(t, h, "POST", testAutomationCallerSecret, true)); tok != first {
+		t.Fatal("the request did not get the still-valid token")
+	}
+	settle(t, h)
+
+	logged := buf.String()
+	if n := strings.Count(logged, "minting a machine token for automation-service failed"); n != 1 {
+		t.Fatalf("a failed background refresh was logged %d times, want 1 (log: %q)", n, logged)
+	}
+	if !strings.Contains(logged, "status 500") {
+		t.Errorf("the failure line does not carry Clerk's status: %q", logged)
+	}
+	for _, leaked := range []string{"clerk is down", testAutomationCallerSecret, testAutomationMachineKey} {
+		if strings.Contains(logged, leaked) {
+			t.Errorf("the failure line leaked %q: %q", leaked, logged)
+		}
+	}
+}
+
+// TestM2MFailedMintIsLoggedOnceWhateverTheWaiters: when several requests
+// wait on one mint that fails, the failure is one line, not one per waiter.
+func TestM2MFailedMintIsLoggedOnceWhateverTheWaiters(t *testing.T) {
+	var buf bytes.Buffer
+	log.SetOutput(&buf)
+	t.Cleanup(func() { log.SetOutput(os.Stderr) })
+
+	clock := newFakeClock()
+	clerk := newFakeClerk(t, clock)
+	clerk.setFail(true)
+	clerk.gate = make(chan struct{})
+	clerk.arrived = make(chan struct{}, 10)
+	h := newM2MTestHandler(t, clerkM2MConfig(clerk, clock))
+	buf.Reset()
+
+	var wg sync.WaitGroup
+	for i := 0; i < 5; i++ {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			requestM2M(t, h, "POST", testAutomationCallerSecret, true)
+		}()
+	}
+	<-clerk.arrived
+	time.Sleep(50 * time.Millisecond) // let the other four join the mint
+	close(clerk.gate)
+	wg.Wait()
+
+	if n := strings.Count(buf.String(), "failed"); n != 1 || clerk.calls() != 1 {
+		t.Fatalf("one failed mint (calls: %d) was logged %d times, want 1 (log: %q)", clerk.calls(), n, buf.String())
 	}
 }
