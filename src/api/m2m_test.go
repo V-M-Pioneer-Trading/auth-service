@@ -362,75 +362,6 @@ func TestM2MClerkRequestShape(t *testing.T) {
 	}
 }
 
-// TestM2MCacheServesUntilHalfLifetimeThenRefreshes: one mint for every
-// request in the first 12 h, and expires_at is the token's exp, not a
-// recomputation from the clock.
-func TestM2MCacheServesUntilHalfLifetimeThenRefreshes(t *testing.T) {
-	clock := newFakeClock()
-	clerk := newFakeClerk(t, clock)
-	router := newM2MTestRouter(t, testAuthConfig(), clerkM2MConfig(clerk, clock))
-	mintedAt := clock.Now().Unix()
-
-	first, expiresAt := decodeMinted(t, requestM2M(t, router, "POST", testAutomationCallerSecret, true))
-	if expiresAt != mintedAt+86400 {
-		t.Errorf("expires_at = %d, want iat+86400 = %d", expiresAt, mintedAt+86400)
-	}
-
-	clock.Advance(12*time.Hour - time.Second)
-	again, againExpires := decodeMinted(t, requestM2M(t, router, "POST", testAutomationCallerSecret, true))
-	if again != first || againExpires != expiresAt {
-		t.Fatal("a request before half the lifetime got a different token: the cache was not used")
-	}
-	if clerk.calls() != 1 {
-		t.Fatalf("Clerk was called %d times before half the lifetime, want 1", clerk.calls())
-	}
-
-	clock.Advance(time.Second)
-	refreshed, refreshedExpires := decodeMinted(t, requestM2M(t, router, "POST", testAutomationCallerSecret, true))
-	if refreshed == first {
-		t.Fatal("at half the lifetime the cached token was served again instead of a fresh mint")
-	}
-	if clerk.calls() != 2 {
-		t.Fatalf("Clerk was called %d times, want 2", clerk.calls())
-	}
-	if refreshedExpires != clock.Now().Unix()+86400 {
-		t.Errorf("refreshed expires_at = %d, want %d", refreshedExpires, clock.Now().Unix()+86400)
-	}
-
-	// The two callers' caches are separate: ai-service's first request
-	// mints, and gets its own token rather than automation-service's.
-	aiToken, _ := decodeMinted(t, requestM2M(t, router, "POST", testAICallerSecret, true))
-	if aiToken == refreshed || clerk.calls() != 3 {
-		t.Fatalf("ai-service was served from automation-service's cache (calls: %d)", clerk.calls())
-	}
-}
-
-// TestM2MRefreshPointFollowsTheTokensOwnLifetime: the refresh point is half
-// of exp-iat as the token says, not half of the 24 h we asked for. A Clerk
-// that shortens the lifetime must not leave us serving an expired token.
-func TestM2MRefreshPointFollowsTheTokensOwnLifetime(t *testing.T) {
-	clock := newFakeClock()
-	clerk := newFakeClerk(t, clock)
-	iat := clock.Now().Unix()
-	clerk.payload = jwt.MapClaims{"sub": "mch_x", "scope": "fleet:control", "iat": iat, "exp": iat + 600}
-	router := newM2MTestRouter(t, testAuthConfig(), clerkM2MConfig(clerk, clock))
-
-	_, expiresAt := decodeMinted(t, requestM2M(t, router, "POST", testAutomationCallerSecret, true))
-	if expiresAt != iat+600 {
-		t.Errorf("expires_at = %d, want %d", expiresAt, iat+600)
-	}
-	clock.Advance(299 * time.Second)
-	decodeMinted(t, requestM2M(t, router, "POST", testAutomationCallerSecret, true))
-	if clerk.calls() != 1 {
-		t.Fatalf("re-minted before half of a 600 s lifetime (calls: %d)", clerk.calls())
-	}
-	clock.Advance(time.Second)
-	decodeMinted(t, requestM2M(t, router, "POST", testAutomationCallerSecret, true))
-	if clerk.calls() != 2 {
-		t.Fatalf("did not re-mint at half of a 600 s lifetime (calls: %d)", clerk.calls())
-	}
-}
-
 // TestM2MTokenWithoutALifetimeIsAFailedMint: a token with no iat/exp cannot
 // be scheduled, so it is refused and not cached.
 func TestM2MTokenWithoutALifetimeIsAFailedMint(t *testing.T) {
@@ -438,6 +369,12 @@ func TestM2MTokenWithoutALifetimeIsAFailedMint(t *testing.T) {
 		"no exp":         {"sub": "mch_x", "iat": 1_900_000_000},
 		"no iat":         {"sub": "mch_x", "exp": 1_900_086_400},
 		"exp before iat": {"sub": "mch_x", "iat": 1_900_000_000, "exp": 1_899_000_000},
+		// The fake clock stands at 1_900_000_000.
+		"already expired":      {"sub": "mch_x", "iat": 1_899_992_800, "exp": 1_899_996_400},
+		"lifetime under 60 s":  {"sub": "mch_x", "iat": 1_900_000_000, "exp": 1_900_000_059},
+		"exp far out of range": {"sub": "mch_x", "iat": 1_900_000_000, "exp": 1e300},
+		"exp past 2^53":        {"sub": "mch_x", "iat": 1_900_000_000, "exp": float64(1 << 60)},
+		"iat negative":         {"sub": "mch_x", "iat": -100, "exp": 1_900_086_400},
 	} {
 		t.Run(name, func(t *testing.T) {
 			clock := newFakeClock()
@@ -498,38 +435,6 @@ func TestM2MConcurrentRequestsMintOnce(t *testing.T) {
 	}
 }
 
-// TestM2MStaleButValidFallback: past the refresh point a failed mint serves
-// the cached token right up to its expiry, and a 503 only after it.
-func TestM2MStaleButValidFallback(t *testing.T) {
-	clock := newFakeClock()
-	clerk := newFakeClerk(t, clock)
-	router := newM2MTestRouter(t, testAuthConfig(), clerkM2MConfig(clerk, clock))
-
-	first, expiresAt := decodeMinted(t, requestM2M(t, router, "POST", testAutomationCallerSecret, true))
-	clerk.setFail(true)
-
-	clock.Advance(24*time.Hour - time.Second)
-	stale, staleExpires := decodeMinted(t, requestM2M(t, router, "POST", testAutomationCallerSecret, true))
-	if stale != first || staleExpires != expiresAt {
-		t.Fatal("a failed refresh did not fall back to the still-valid cached token")
-	}
-	if clerk.calls() != 2 {
-		t.Fatalf("past the refresh point a request must try Clerk first (calls: %d, want 2)", clerk.calls())
-	}
-
-	clock.Advance(time.Second)
-	assertM2MError(t, requestM2M(t, router, "POST", testAutomationCallerSecret, true), 503, m2mMintFailed)
-
-	// And it recovers: Clerk back and the failure backoff over, the next
-	// request mints.
-	clerk.setFail(false)
-	clock.Advance(m2mRetryBackoff)
-	fresh, _ := decodeMinted(t, requestM2M(t, router, "POST", testAutomationCallerSecret, true))
-	if fresh == first {
-		t.Fatal("after recovery the expired token was served")
-	}
-}
-
 // TestM2MSecretsNeverReachTheLog: a 401 names no caller and no secret, and a
 // 503 names the caller (an operator needs to know which Machine failed) but
 // neither its secret nor its Machine key.
@@ -564,6 +469,9 @@ func TestM2MSecretsNeverReachTheLog(t *testing.T) {
 	// Caller name and Clerk's status: what an operator needs to act on.
 	if !strings.Contains(buf.String(), "automation-service") || !strings.Contains(buf.String(), "500") {
 		t.Errorf("a failed mint should name the caller and Clerk's status in the log, got %q", buf.String())
+	}
+	if strings.Contains(buf.String(), "clerk is down") {
+		t.Errorf("Clerk's error body reached the log: %q", buf.String())
 	}
 }
 
@@ -676,6 +584,20 @@ func TestM2MStartupRejectsUnsafeConfig(t *testing.T) {
 			{Name: "automation-service", Secret: "same-secret", MachineKey: "ak_a"},
 			{Name: "ai-service", Secret: "same-secret", MachineKey: "ak_b"},
 		}},
+		{name: "two callers share a Machine key", callers: []M2MCallerConfig{
+			{Name: "automation-service", Secret: "caller-a", MachineKey: "ak_same"},
+			{Name: "ai-service", Secret: "caller-b", MachineKey: "ak_same"},
+		}},
+		{name: "two callers share a Machine key, one disabled", callers: []M2MCallerConfig{
+			{Name: "automation-service", Secret: "caller-a", MachineKey: "ak_same"},
+			{Name: "ai-service", MachineKey: "ak_same"},
+		}},
+		{name: "caller secret with leading whitespace",
+			callers: []M2MCallerConfig{{Name: "automation-service", Secret: " caller-a", MachineKey: "ak_a"}}},
+		{name: "caller secret with a trailing newline",
+			callers: []M2MCallerConfig{{Name: "automation-service", Secret: "caller-a\n", MachineKey: "ak_a"}}},
+		{name: "whitespace-only caller secret",
+			callers: []M2MCallerConfig{{Name: "ai-service", Secret: " \t ", MachineKey: "ak_b"}}},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
@@ -883,12 +805,13 @@ func TestM2MFailedMintsBackOff(t *testing.T) {
 	t.Run("stale token in hand", func(t *testing.T) {
 		clock := newFakeClock()
 		clerk := newFakeClerk(t, clock)
-		router := newM2MTestRouter(t, testAuthConfig(), clerkM2MConfig(clerk, clock))
+		router := newM2MTestHandler(t, clerkM2MConfig(clerk, clock))
 
 		first, _ := decodeMinted(t, requestM2M(t, router, "POST", testAutomationCallerSecret, true))
 		clerk.setFail(true)
 		clock.Advance(13 * time.Hour)
-		decodeMinted(t, requestM2M(t, router, "POST", testAutomationCallerSecret, true)) // fails, serves stale
+		decodeMinted(t, requestM2M(t, router, "POST", testAutomationCallerSecret, true)) // serves stale, refresh fails behind it
+		settle(t, router)
 		for i := 0; i < 5; i++ {
 			tok, _ := decodeMinted(t, requestM2M(t, router, "POST", testAutomationCallerSecret, true))
 			if tok != first {
@@ -1014,5 +937,300 @@ func TestM2MMintHasItsOwnTimeout(t *testing.T) {
 		assertM2MError(t, rec, 503, m2mMintFailed)
 	case <-time.After(3 * time.Second):
 		t.Fatal("a mint against a Clerk that never answers did not time out")
+	}
+}
+
+// settle waits until no caller has a mint in flight: the background refresh
+// a request started without waiting for it has landed (or failed).
+func settle(t *testing.T, h *m2mHandler) {
+	t.Helper()
+	deadline := time.Now().Add(3 * time.Second)
+	for _, c := range h.callers {
+		for {
+			c.cache.mu.Lock()
+			idle := c.cache.inflight == nil
+			c.cache.mu.Unlock()
+			if idle {
+				break
+			}
+			if time.Now().After(deadline) {
+				t.Fatal("a mint never finished")
+			}
+			time.Sleep(2 * time.Millisecond)
+		}
+	}
+}
+
+// TestM2MCacheServesUntilHalfLifetimeThenRefreshes: one mint for every
+// request in the first 12 h; at the refresh point the request still gets
+// the old token, a refresh runs behind it, and the next request gets the
+// new one. expires_at is the token's exp, not a recomputation from the clock.
+func TestM2MCacheServesUntilHalfLifetimeThenRefreshes(t *testing.T) {
+	clock := newFakeClock()
+	clerk := newFakeClerk(t, clock)
+	h := newM2MTestHandler(t, clerkM2MConfig(clerk, clock))
+	mintedAt := clock.Now().Unix()
+
+	first, expiresAt := decodeMinted(t, requestM2M(t, h, "POST", testAutomationCallerSecret, true))
+	if expiresAt != mintedAt+86400 {
+		t.Errorf("expires_at = %d, want iat+86400 = %d", expiresAt, mintedAt+86400)
+	}
+
+	clock.Advance(12*time.Hour - time.Second)
+	again, againExpires := decodeMinted(t, requestM2M(t, h, "POST", testAutomationCallerSecret, true))
+	settle(t, h)
+	if again != first || againExpires != expiresAt {
+		t.Fatal("a request before half the lifetime got a different token: the cache was not used")
+	}
+	if clerk.calls() != 1 {
+		t.Fatalf("Clerk was called %d times before half the lifetime, want 1", clerk.calls())
+	}
+
+	clock.Advance(time.Second)
+	atRefresh, _ := decodeMinted(t, requestM2M(t, h, "POST", testAutomationCallerSecret, true))
+	if atRefresh != first {
+		t.Fatal("at the refresh point the request did not get the still-valid token at once")
+	}
+	settle(t, h)
+	if clerk.calls() != 2 {
+		t.Fatalf("the refresh point did not start a mint (calls: %d, want 2)", clerk.calls())
+	}
+	refreshed, refreshedExpires := decodeMinted(t, requestM2M(t, h, "POST", testAutomationCallerSecret, true))
+	if refreshed == first {
+		t.Fatal("after the refresh landed the old token was still served")
+	}
+	if refreshedExpires != clock.Now().Unix()+86400 {
+		t.Errorf("refreshed expires_at = %d, want %d", refreshedExpires, clock.Now().Unix()+86400)
+	}
+	if clerk.calls() != 2 {
+		t.Fatalf("Clerk was called %d times, want 2", clerk.calls())
+	}
+
+	// The two callers' caches are separate: ai-service's first request
+	// mints, and gets its own token rather than automation-service's.
+	aiToken, _ := decodeMinted(t, requestM2M(t, h, "POST", testAICallerSecret, true))
+	if aiToken == refreshed || clerk.calls() != 3 {
+		t.Fatalf("ai-service was served from automation-service's cache (calls: %d)", clerk.calls())
+	}
+}
+
+// TestM2MRefreshPointFollowsTheTokensOwnLifetime: the refresh point is half
+// of exp-iat as the token says, not half of the 24 h we asked for. A Clerk
+// that shortens the lifetime must not leave us serving an expired token.
+func TestM2MRefreshPointFollowsTheTokensOwnLifetime(t *testing.T) {
+	clock := newFakeClock()
+	clerk := newFakeClerk(t, clock)
+	iat := clock.Now().Unix()
+	clerk.payload = jwt.MapClaims{"sub": "mch_x", "scope": "fleet:control", "iat": iat, "exp": iat + 600}
+	h := newM2MTestHandler(t, clerkM2MConfig(clerk, clock))
+
+	_, expiresAt := decodeMinted(t, requestM2M(t, h, "POST", testAutomationCallerSecret, true))
+	if expiresAt != iat+600 {
+		t.Errorf("expires_at = %d, want %d", expiresAt, iat+600)
+	}
+	clock.Advance(299 * time.Second)
+	decodeMinted(t, requestM2M(t, h, "POST", testAutomationCallerSecret, true))
+	settle(t, h)
+	if clerk.calls() != 1 {
+		t.Fatalf("re-minted before half of a 600 s lifetime (calls: %d)", clerk.calls())
+	}
+	clock.Advance(time.Second)
+	decodeMinted(t, requestM2M(t, h, "POST", testAutomationCallerSecret, true))
+	settle(t, h)
+	if clerk.calls() != 2 {
+		t.Fatalf("did not re-mint at half of a 600 s lifetime (calls: %d)", clerk.calls())
+	}
+}
+
+// TestM2MStaleButValidFallback: past the refresh point a failed mint leaves
+// the cached token in service right up to its expiry, and a 503 only after.
+func TestM2MStaleButValidFallback(t *testing.T) {
+	clock := newFakeClock()
+	clerk := newFakeClerk(t, clock)
+	h := newM2MTestHandler(t, clerkM2MConfig(clerk, clock))
+
+	first, expiresAt := decodeMinted(t, requestM2M(t, h, "POST", testAutomationCallerSecret, true))
+	clerk.setFail(true)
+
+	clock.Advance(24*time.Hour - time.Second)
+	stale, staleExpires := decodeMinted(t, requestM2M(t, h, "POST", testAutomationCallerSecret, true))
+	settle(t, h)
+	if stale != first || staleExpires != expiresAt {
+		t.Fatal("past the refresh point the still-valid cached token was not served")
+	}
+	if clerk.calls() != 2 {
+		t.Fatalf("past the refresh point a request must start a refresh (calls: %d, want 2)", clerk.calls())
+	}
+	again, _ := decodeMinted(t, requestM2M(t, h, "POST", testAutomationCallerSecret, true))
+	if again != first {
+		t.Fatal("after the refresh failed the still-valid cached token was not served")
+	}
+
+	clock.Advance(time.Second)
+	assertM2MError(t, requestM2M(t, h, "POST", testAutomationCallerSecret, true), 503, m2mMintFailed)
+
+	// And it recovers: Clerk back and the failure backoff over, the next
+	// request mints.
+	clerk.setFail(false)
+	clock.Advance(m2mRetryBackoff)
+	fresh, _ := decodeMinted(t, requestM2M(t, h, "POST", testAutomationCallerSecret, true))
+	if fresh == first {
+		t.Fatal("after recovery the expired token was served")
+	}
+}
+
+// TestM2MRefreshNeverMakesARequestWait: 13 h after a mint, with a Clerk that
+// takes as long as it likes, a request gets the old token immediately and
+// exactly one mint runs however many requests arrive meanwhile.
+func TestM2MRefreshNeverMakesARequestWait(t *testing.T) {
+	clock := newFakeClock()
+	clerk := newFakeClerk(t, clock)
+	h := newM2MTestHandler(t, clerkM2MConfig(clerk, clock))
+	first, _ := decodeMinted(t, requestM2M(t, h, "POST", testAutomationCallerSecret, true))
+
+	clerk.mu.Lock()
+	clerk.gate = make(chan struct{})
+	clerk.arrived = make(chan struct{}, 100)
+	clerk.mu.Unlock()
+	clock.Advance(13 * time.Hour)
+
+	for i := 0; i < 5; i++ {
+		result := make(chan *httptest.ResponseRecorder, 1)
+		go func() { result <- requestM2M(t, h, "POST", testAutomationCallerSecret, true) }()
+		select {
+		case rec := <-result:
+			if tok, _ := decodeMinted(t, rec); tok != first {
+				t.Fatalf("request %d got a different token while the refresh was held", i)
+			}
+		case <-time.After(2 * time.Second):
+			close(clerk.gate)
+			t.Fatalf("request %d waited on a mint while a valid token existed", i)
+		}
+	}
+	close(clerk.gate)
+	settle(t, h)
+	if clerk.calls() != 2 {
+		t.Fatalf("Clerk was called %d times, want 2 (the first mint and exactly one refresh)", clerk.calls())
+	}
+	refreshed, _ := decodeMinted(t, requestM2M(t, h, "POST", testAutomationCallerSecret, true))
+	if refreshed == first {
+		t.Fatal("the background refresh was not cached")
+	}
+}
+
+// TestM2MShortLivedTokenDoesNotMintPerRequest: a 1 s token is refused, and
+// the refusal backs off like any failed mint, so a Clerk that hands out
+// nearly-dead tokens costs one mint per 10 s, not one per request.
+func TestM2MShortLivedTokenDoesNotMintPerRequest(t *testing.T) {
+	clock := newFakeClock()
+	clerk := newFakeClerk(t, clock)
+	iat := clock.Now().Unix()
+	clerk.payload = jwt.MapClaims{"sub": "mch_x", "iat": iat, "exp": iat + 1}
+	router := newM2MTestRouter(t, testAuthConfig(), clerkM2MConfig(clerk, clock))
+
+	for i := 0; i < 10; i++ {
+		assertM2MError(t, requestM2M(t, router, "POST", testAutomationCallerSecret, true), 503, m2mMintFailed)
+		clock.Advance(500 * time.Millisecond)
+	}
+	if clerk.calls() != 1 {
+		t.Fatalf("a 1 s token cost %d mints in 5 s, want 1", clerk.calls())
+	}
+}
+
+// TestM2MSixtySecondTokenIsTheShortestAccepted pins the boundary from the
+// other side, so the minimum cannot quietly drift upward.
+func TestM2MSixtySecondTokenIsTheShortestAccepted(t *testing.T) {
+	clock := newFakeClock()
+	clerk := newFakeClerk(t, clock)
+	iat := clock.Now().Unix()
+	clerk.payload = jwt.MapClaims{"sub": "mch_x", "iat": iat, "exp": iat + 60}
+	router := newM2MTestRouter(t, testAuthConfig(), clerkM2MConfig(clerk, clock))
+
+	if _, exp := decodeMinted(t, requestM2M(t, router, "POST", testAutomationCallerSecret, true)); exp != iat+60 {
+		t.Fatalf("expires_at = %d, want %d", exp, iat+60)
+	}
+}
+
+// TestM2MClerkRedirectIsNotFollowed: the mint request carries a Machine
+// Secret Key, so a 3xx is a failed mint, never a second request elsewhere.
+func TestM2MClerkRedirectIsNotFollowed(t *testing.T) {
+	var elsewhereHits int
+	var mu sync.Mutex
+	elsewhere := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		mu.Lock()
+		elsewhereHits++
+		mu.Unlock()
+	}))
+	t.Cleanup(elsewhere.Close)
+	redirecting := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		http.Redirect(w, r, elsewhere.URL, http.StatusTemporaryRedirect)
+	}))
+	t.Cleanup(redirecting.Close)
+
+	clock := newFakeClock()
+	cfg := clerkM2MConfig(&fakeClerk{server: redirecting}, clock)
+	router := newM2MTestRouter(t, testAuthConfig(), cfg)
+
+	assertM2MError(t, requestM2M(t, router, "POST", testAutomationCallerSecret, true), 503, m2mMintFailed)
+	mu.Lock()
+	defer mu.Unlock()
+	if elsewhereHits != 0 {
+		t.Fatalf("the redirect was followed %d time(s)", elsewhereHits)
+	}
+}
+
+// TestM2MBackoffIsLoggedOncePerWindow: a scheduler ticking during a Clerk
+// outage writes one failure line and one backoff line per window, not one
+// per tick.
+func TestM2MBackoffIsLoggedOncePerWindow(t *testing.T) {
+	var buf bytes.Buffer
+	log.SetOutput(&buf)
+	t.Cleanup(func() { log.SetOutput(os.Stderr) })
+
+	clock := newFakeClock()
+	clerk := newFakeClerk(t, clock)
+	clerk.setFail(true)
+	router := newM2MTestRouter(t, testAuthConfig(), clerkM2MConfig(clerk, clock))
+	buf.Reset()
+
+	for window := 1; window <= 2; window++ {
+		for i := 0; i < 5; i++ {
+			assertM2MError(t, requestM2M(t, router, "POST", testAutomationCallerSecret, true), 503, m2mMintFailed)
+			clock.Advance(time.Second)
+		}
+		if got := strings.Count(buf.String(), "status 500"); got != window {
+			t.Errorf("window %d: %d failure lines so far, want %d", window, got, window)
+		}
+		if got := strings.Count(buf.String(), "not calling Clerk again yet"); got != window {
+			t.Errorf("window %d: %d backoff lines so far, want %d (log: %q)", window, got, window, buf.String())
+		}
+		clock.Advance(m2mRetryBackoff)
+	}
+}
+
+// TestM2MCallerLeavingIsNotAFailure: a caller whose own timeout fires while
+// the mint is in flight is not a failed mint, and must not read like one in
+// the log; the mint's later success is cached as usual.
+func TestM2MCallerLeavingIsNotAFailure(t *testing.T) {
+	var buf bytes.Buffer
+	log.SetOutput(&buf)
+	t.Cleanup(func() { log.SetOutput(os.Stderr) })
+
+	clock := newFakeClock()
+	clerk := newFakeClerk(t, clock)
+	clerk.gate = make(chan struct{})
+	clerk.arrived = make(chan struct{}, 10)
+	h := newM2MTestHandler(t, clerkM2MConfig(clerk, clock))
+
+	buf.Reset()
+	requestM2MUntilCancelled(h, clerk)
+	close(clerk.gate)
+	settle(t, h)
+	if strings.Contains(buf.String(), "failed") {
+		t.Errorf("a caller leaving was logged as a failed mint: %q", buf.String())
+	}
+	decodeMinted(t, requestM2M(t, h, "POST", testAutomationCallerSecret, true))
+	if clerk.calls() != 1 {
+		t.Fatalf("the mint that outlived its caller was not cached (calls: %d)", clerk.calls())
 	}
 }

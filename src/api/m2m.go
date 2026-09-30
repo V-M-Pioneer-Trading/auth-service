@@ -154,6 +154,7 @@ func validateM2MConfig(cfg M2MConfig, sharedSecret, introspectionSecret string) 
 		known[c.Name] = true
 	}
 	seen := map[string]string{}
+	machineKeys := map[string]string{}
 	for _, c := range cfg.Callers {
 		if !known[c.Name] {
 			return fmt.Errorf("m2m caller %q is not in the scope table", c.Name)
@@ -161,6 +162,22 @@ func validateM2MConfig(cfg M2MConfig, sharedSecret, introspectionSecret string) 
 		if c.MachineKey != "" && cfg.DevSigningKeyPEM != "" {
 			return errors.New("DEV_M2M_SIGNING_KEY_FILE and a M2M_MACHINE_KEY_* variable are both set: " +
 				"one process mints with exactly one trust anchor")
+		}
+		// One Machine per caller is the point of decision 22: with a shared
+		// key both callers' tokens carry the same `sub`, audit rows cannot
+		// tell them apart, and disabling one Machine disables both.
+		if c.MachineKey != "" {
+			if other, dup := machineKeys[c.MachineKey]; dup {
+				return fmt.Errorf("m2m callers %s and %s are configured with the same M2M_MACHINE_KEY_*: one Clerk Machine per caller", other, c.Name)
+			}
+			machineKeys[c.MachineKey] = c.Name
+		}
+		// Go trims a header value's surrounding whitespace before the handler
+		// sees it, so such a secret could never match: the caller would be
+		// enabled and locked out at once. Whitespace-only is the same mistake,
+		// not "unset".
+		if strings.TrimSpace(c.Secret) != c.Secret {
+			return fmt.Errorf("the m2m caller secret for %s has leading or trailing whitespace, so no request could ever present it", c.Name)
 		}
 		if c.Secret == "" {
 			continue
@@ -227,11 +244,16 @@ func newM2MHandler(cfg M2MConfig, sharedSecret, introspectionSecret string, veri
 	if clerkURL == "" {
 		clerkURL = clerkM2MTokensURL
 	}
-	client := cfg.httpClient
-	if client == nil {
-		// No client timeout: the mint's own context carries m2mMintTimeout.
-		client = &http.Client{}
+	// No client timeout: the mint's own context carries m2mMintTimeout.
+	client := &http.Client{}
+	if cfg.httpClient != nil {
+		copied := *cfg.httpClient
+		client = &copied
 	}
+	// Never follow a redirect. The request carries a Machine Secret Key, and
+	// a 3xx from anything answering at api.clerk.com is not a place that key
+	// should be re-sent; the redirect is returned as a non-2xx, a failed mint.
+	client.CheckRedirect = func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }
 
 	h := &m2mHandler{}
 	for _, c := range cfg.Callers {
@@ -294,7 +316,15 @@ func (h *m2mHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	}
 	tok, err := caller.cache.get(r.Context())
 	if err != nil {
-		log.Default().Printf("minting a machine token for %s failed: %v", caller.name, err)
+		switch {
+		case errors.Is(err, errCallerLeft):
+			// Not a failure: the mint carries on and its result is cached.
+			// Whoever is still reading gets the flat 503; nobody usually is.
+		case errors.Is(err, errMintBackoffRepeat):
+			// Already said once in this backoff window.
+		default:
+			log.Default().Printf("minting a machine token for %s failed: %v", caller.name, err)
+		}
 		writeM2M(w, http.StatusServiceUnavailable, map[string]string{"error": m2mMintFailed})
 		return
 	}
@@ -317,8 +347,11 @@ type cachedM2MToken struct {
 }
 
 // m2mTokenCache holds one caller's token. Until refreshAt it answers from
-// memory; after it, the next request mints, and concurrent requests wait on
-// that one mint rather than starting their own (each one is billed).
+// memory. After it, the next request starts a mint, and every request that
+// finds one in flight joins it rather than starting its own (each is billed).
+// A request only ever WAITS for a mint when there is no valid token to give
+// it; while the cached token is unexpired it gets that token at once and the
+// refresh runs behind it.
 type m2mTokenCache struct {
 	mint func(context.Context) (string, error)
 	now  func() time.Time
@@ -331,6 +364,9 @@ type m2mTokenCache struct {
 	// failedAt is when the last mint failed; zero after a success. No new
 	// mint starts within m2mRetryBackoff of it.
 	failedAt time.Time
+	// backoffLogged is whether this backoff window has been reported once
+	// already; a scheduler ticking every second must not write ten lines.
+	backoffLogged bool
 }
 
 type m2mMint struct {
@@ -339,9 +375,17 @@ type m2mMint struct {
 	err    error
 }
 
-// errMintBackoff is what a request gets inside the backoff window with no
-// valid token in hand. It is logged, never sent: the body is the flat 503.
-var errMintBackoff = errors.New("the last mint failed less than 10 s ago; not calling Clerk again yet")
+var (
+	// errMintBackoff is what a request gets inside the backoff window with no
+	// valid token in hand, the first time in that window; errMintBackoffRepeat
+	// every time after. Both are logged at most once and never sent: the body
+	// is the flat 503.
+	errMintBackoff       = errors.New("the last mint failed less than 10 s ago; not calling Clerk again yet")
+	errMintBackoffRepeat = fmt.Errorf("%w (repeat)", errMintBackoff)
+	// errCallerLeft is a request whose context ended while it waited. The mint
+	// is not affected; this is the caller's timeout, not a failure.
+	errCallerLeft = errors.New("the caller left before the mint finished")
+)
 
 func (c *m2mTokenCache) get(ctx context.Context) (cachedM2MToken, error) {
 	c.mu.Lock()
@@ -351,20 +395,33 @@ func (c *m2mTokenCache) get(ctx context.Context) (cachedM2MToken, error) {
 		c.mu.Unlock()
 		return tok, nil
 	}
+	valid := c.cached != nil && now.Before(c.cached.expiresAt)
 	call := c.inflight
 	if call == nil && !c.failedAt.IsZero() && now.Before(c.failedAt.Add(m2mRetryBackoff)) {
 		// A Clerk outage must not turn every scheduler tick into a Clerk
 		// call. Inside the window the answer is whatever is already in hand.
 		defer c.mu.Unlock()
-		if c.cached != nil && now.Before(c.cached.expiresAt) {
+		if valid {
 			return *c.cached, nil
 		}
+		if c.backoffLogged {
+			return cachedM2MToken{}, errMintBackoffRepeat
+		}
+		c.backoffLogged = true
 		return cachedM2MToken{}, errMintBackoff
 	}
 	if call == nil {
 		call = &m2mMint{done: make(chan struct{})}
 		c.inflight = call
 		go c.run(call)
+	}
+	if valid {
+		// Past the refresh point but not expired: the refresh is started (or
+		// already running) and this request does not wait for it. A slow
+		// Clerk then costs a caller nothing until the token actually expires.
+		tok := *c.cached
+		c.mu.Unlock()
+		return tok, nil
 	}
 	c.mu.Unlock()
 
@@ -373,7 +430,7 @@ func (c *m2mTokenCache) get(ctx context.Context) (cachedM2MToken, error) {
 	case <-ctx.Done():
 		// The caller gave up (its own timeout is 1 s). The mint carries on,
 		// its result is cached, and the caller's retry joins it or finds it.
-		return cachedM2MToken{}, ctx.Err()
+		return cachedM2MToken{}, errCallerLeft
 	}
 	if call.err == nil {
 		return call.result, nil
@@ -381,9 +438,8 @@ func (c *m2mTokenCache) get(ctx context.Context) (cachedM2MToken, error) {
 
 	c.mu.Lock()
 	defer c.mu.Unlock()
-	// A token past its refresh point is still a valid token. Serve it over a
-	// failed mint, right up to its actual expiry, so a Clerk outage costs
-	// nothing until then.
+	// Nothing was valid when this request started waiting, but check again:
+	// another mint may have landed meanwhile.
 	if c.cached != nil && c.now().Before(c.cached.expiresAt) {
 		return *c.cached, nil
 	}
@@ -404,7 +460,7 @@ func (c *m2mTokenCache) run(call *m2mMint) {
 	token, err := c.mint(ctx)
 	var tok cachedM2MToken
 	if err == nil {
-		tok, err = cacheEntryFrom(token)
+		tok, err = cacheEntryFrom(token, c.now())
 	}
 
 	c.mu.Lock()
@@ -413,6 +469,7 @@ func (c *m2mTokenCache) run(call *m2mMint) {
 		c.failedAt = time.Time{}
 	} else {
 		c.failedAt = c.now()
+		c.backoffLogged = false
 	}
 	call.result, call.err = tok, err
 	c.inflight = nil
@@ -420,12 +477,23 @@ func (c *m2mTokenCache) run(call *m2mMint) {
 	close(call.done)
 }
 
+// m2mMinLifetime is the shortest token worth caching. Anything shorter is
+// refused as a failed mint: its refresh point would come round on nearly
+// every request, and every one of those is a billed mint.
+const m2mMinLifetime = 60 // seconds
+
+// maxJWTSeconds bounds `iat` and `exp` before they leave float64. 2^53 is the
+// largest range in which float64 holds every integer exactly, and it is far
+// inside int64; a value past it would convert to garbage (or, past 2^63, to
+// an implementation-defined int64) and then schedule the cache by it.
+const maxJWTSeconds = float64(1 << 53)
+
 // cacheEntryFrom reads `iat` and `exp` from the token's payload. No signature
 // check: the token came from Clerk over TLS (or from our own key), and this
-// is bookkeeping, not trust. A token without a usable lifetime is refused as
-// a failed mint — caching it would either never refresh or refresh on every
-// request, and the second one is billed.
-func cacheEntryFrom(token string) (cachedM2MToken, error) {
+// is bookkeeping, not trust. A token whose lifetime cannot be used safely is
+// refused as a failed mint rather than cached: already expired, shorter than
+// m2mMinLifetime, or with a claim outside the range above.
+func cacheEntryFrom(token string, now time.Time) (cachedM2MToken, error) {
 	parts := strings.Split(token, ".")
 	if len(parts) != 3 {
 		return cachedM2MToken{}, errors.New("minted token is not a JWT")
@@ -441,10 +509,21 @@ func cacheEntryFrom(token string) (cachedM2MToken, error) {
 	if err := json.Unmarshal(raw, &claims); err != nil {
 		return cachedM2MToken{}, fmt.Errorf("minted token payload: %w", err)
 	}
-	if claims.Iat == nil || claims.Exp == nil || *claims.Exp <= *claims.Iat {
-		return cachedM2MToken{}, errors.New("minted token has no usable iat/exp")
+	if claims.Iat == nil || claims.Exp == nil {
+		return cachedM2MToken{}, errors.New("minted token has no iat/exp")
+	}
+	for _, v := range []float64{*claims.Iat, *claims.Exp} {
+		if !(v >= 0 && v <= maxJWTSeconds) {
+			return cachedM2MToken{}, errors.New("minted token has an iat/exp out of range")
+		}
 	}
 	iat, exp := int64(*claims.Iat), int64(*claims.Exp)
+	if exp-iat < m2mMinLifetime {
+		return cachedM2MToken{}, fmt.Errorf("minted token lives %d s, under the %d s minimum", exp-iat, m2mMinLifetime)
+	}
+	if exp <= now.Unix() {
+		return cachedM2MToken{}, errors.New("minted token is already expired")
+	}
 	return cachedM2MToken{
 		token:     token,
 		expiresAt: time.Unix(exp, 0),
@@ -478,10 +557,10 @@ func clerkMinter(client *http.Client, url, machineKey, scopes string) func(conte
 		}
 		defer res.Body.Close()
 		if res.StatusCode < 200 || res.StatusCode > 299 {
-			// Clerk's error body names the problem and never echoes the key;
-			// capped so a misbehaving upstream cannot flood the log.
-			detail, _ := io.ReadAll(io.LimitReader(res.Body, 512))
-			return "", fmt.Errorf("POST /m2m_tokens: %d %s", res.StatusCode, strings.TrimSpace(string(detail)))
+			// Status only. The body is upstream-controlled text, and this
+			// process holds the one Clerk key; nothing it did not write
+			// itself goes into its log.
+			return "", fmt.Errorf("POST /m2m_tokens: status %d", res.StatusCode)
 		}
 		var out struct {
 			Token string `json:"token"`
