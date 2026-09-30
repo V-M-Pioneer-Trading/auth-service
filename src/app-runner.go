@@ -34,6 +34,17 @@ func main() {
 		log.Default().Print("AUTH_INTROSPECTION_SECRET is not set: POST /auth/v1/introspect will reject every caller")
 	}
 
+	// Unlike the introspection secret, a mis-set mint table IS fatal: a caller
+	// secret colliding with another secret, or a caller with nothing to mint
+	// with, is a deploy mistake. Unset caller secrets are not an error — they
+	// disable the caller — so production without meta#59's parameters still
+	// boots and the vault stays up.
+	m2m, err := api.ReadM2MConfig(sharedSecret, introspectionSecret)
+	if err != nil {
+		log.Fatal(err)
+	}
+	logM2MCallers(m2m)
+
 	p := poller.New(conn)
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
@@ -44,6 +55,7 @@ func main() {
 		Auth:                api.AuthConfig{ClerkJWTKeyPEM: clerkJWTKey, ClerkIssuer: os.Getenv("CLERK_ISSUER")},
 		SharedSecret:        sharedSecret,
 		IntrospectionSecret: introspectionSecret,
+		M2M:                 m2m,
 		Poller:              p,
 	})
 	if err != nil {
@@ -59,4 +71,22 @@ func main() {
 		port = "80"
 	}
 	log.Fatal(http.ListenAndServe(":"+port, r))
+}
+
+// logM2MCallers says which callers can mint, and from what, by name only.
+func logM2MCallers(cfg api.M2MConfig) {
+	source := "Clerk"
+	if cfg.DevSigningKeyPEM != "" {
+		source = "the local dev key (DEV_M2M_SIGNING_KEY_FILE)"
+	}
+	enabled := 0
+	for _, c := range cfg.Callers {
+		if c.Secret != "" {
+			enabled++
+			log.Default().Printf("POST /auth/v1/m2m-token: %s mints via %s", c.Name, source)
+		}
+	}
+	if enabled == 0 {
+		log.Default().Print("no M2M_CALLER_SECRET_* is set: POST /auth/v1/m2m-token will reject every caller")
+	}
 }

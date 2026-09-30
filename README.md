@@ -54,6 +54,7 @@ checked — every other service's suite stands up a stub center instead.
 |---|---|---|
 | `GET /auth/v1/token` | `X-Auth-Service-Secret` header | st-gateway fetches the agent token to inject. Never gets a public route — see decision 9. |
 | `POST /auth/v1/introspect` | `X-Introspection-Secret` header | **Token introspection** — form body `token=<jwt>`, answers `{active}` or `{active, sub, scope, exp, kind}`. See below. |
+| `POST /auth/v1/m2m-token` | `X-M2M-Caller-Secret` header (per caller) | **Machine token minting** — empty body, answers `{token, expires_at}`. See below. |
 | `GET /auth/v1/status`, `GET /api/auth/v1/status` | none | `{state, agentSymbol, resetDate, nextPredictedReset}` — never a token |
 | `POST /api/auth/v1/agent-token` | Clerk `agent:reset` scope | **Restore Token** — body `{agentToken}`, regenerates the existing agent's token |
 | `POST /api/auth/v1/register` | Clerk `agent:reset` scope | **Reset Agent** — body `{accountToken, symbol, faction, email?}`, mints a new agent |
@@ -107,6 +108,56 @@ against what its own route declares. The contract is fixed by
   function in-process**. One code path; this service never calls itself over
   HTTP. Their external behaviour is unchanged apart from the new leeway.
 
+### Minting a machine token
+
+`POST /auth/v1/m2m-token` makes this service the only holder of a Clerk Machine Secret Key
+(auth-design.md **decision 22**; rollout is
+[meta#59](https://github.com/V-M-Pioneer-Trading/meta/issues/59); contract in
+`meta/docs/design/token-introspection.md`, "Minting a machine token"). A headless service
+presents its own caller secret and gets back a bearer token for its outbound calls.
+
+    curl -s -X POST localhost:$PORT/auth/v1/m2m-token \
+      -H "X-M2M-Caller-Secret: $M2M_CALLER_SECRET_AUTOMATION_SERVICE"
+
+| Situation | Status | Body |
+|---|---|---|
+| Known secret, token minted or served from cache | `200` | `{"token":"<jwt>","expires_at":<unix seconds>}` |
+| Missing, empty or unknown secret; caller disabled | `401` | `{"error":"unknown caller"}` |
+| Minting failed and no cached token is still unexpired | `503` | `{"error":"the token could not be minted"}` |
+| `OPTIONS` | `204` | — (the service-wide CORS preflight catch-all; CORS does not allow the caller-secret header) |
+| Any other method | `405` | — |
+
+- **The secret is the identity.** There is no body field naming a caller or asking for a
+  scope. Scopes are a fixed table in `src/api/m2m.go`: `automation-service` gets
+  `fleet:control`; `ai-service` gets `events:write planner:advise`. Changing it is a pull
+  request here.
+- **Tokens live 24 hours** and are cached in memory per caller, served again until the
+  refresh point `iat + (exp - iat) / 2`, read from the token itself (callers use the same
+  point). Nothing is persisted, so a restart costs each caller one mint.
+- **A request never waits on a refresh while a valid token exists.** Past the refresh point
+  with the cached token unexpired, the request gets that token at once and a mint starts (or
+  is joined) behind it. Only a request with nothing valid in hand waits for the mint.
+- **A mint is detached and single-flight.** It runs on a background context under its own
+  10 s timeout, never the request's, so a caller giving up after its 1 s timeout cancels
+  nothing (and is not logged as a failure): its retry joins the mint in flight, and a token
+  that lands after everyone left is still cached.
+- **Failures back off and fall back.** Failed mints are spaced at least 10 s apart per
+  caller; inside that window no request reaches Clerk, and the backoff is logged once per
+  window. If a mint fails, or is backing off, while the cached token is still unexpired, the
+  cached token is served; with nothing valid in hand the answer is `503`.
+- **A minted token must have a usable lifetime** or it counts as a failed mint and is not
+  cached: `iat` and `exp` present, both within `0 … 2^53`, at least 60 s apart, at most 7 days
+  apart, and the refresh point still in the future. A failed mint is logged once, by the mint
+  itself, since a background refresh has no request to report it.
+- **Production** calls Clerk's `POST /v1/m2m_tokens` with that caller's own Machine Secret
+  Key, so `sub` names the caller's Machine (`mch_…`). Redirects are never followed (the
+  request carries the key), and a failure is logged with Clerk's status only, never its body.
+- **Local dev** (`DEV_M2M_SIGNING_KEY_FILE` set) signs the same shape of JWT with the
+  committed dev private key: `sub` is `mch_local_<caller>`, `kid` is `dev-only-do-not-use`,
+  `iss` is `CLERK_ISSUER` when set. This service's own introspection answers it
+  `kind: "machine"`.
+- A `401` names no caller and no secret, in the body or the log.
+
 `state` is one of `UNCONFIGURED` / `HEALTHY` / `WIPE_IMMINENT` / `APP_TOKEN_EXPIRED` — see
 `src/state/machine.go` and auth-design.md decisions 7/8 for the transition rules.
 
@@ -136,5 +187,22 @@ against what its own route declares. The contract is fixed by
     2026-08-22 outage shape).
   - Setting it to the same value as `AUTH_SERVICE_SHARED_SECRET` **is** fatal at startup. That
     cannot happen by accident in production today, so failing loudly costs nothing.
+- `M2M_CALLER_SECRET_AUTOMATION_SERVICE`, `M2M_CALLER_SECRET_AI_SERVICE` — the secret each
+  caller presents to `POST /auth/v1/m2m-token` as `X-M2M-Caller-Secret`. **Unset or empty disables that
+  caller** (its requests get `401`); it is not a startup error. Fatal at startup: equal to
+  `AUTH_SERVICE_SHARED_SECRET`, to `AUTH_INTROSPECTION_SECRET` (every service holds that one,
+  so every service could mint), or to the other caller's secret (either could mint as the
+  other); set with leading or trailing whitespace, or whitespace only (Go trims header values,
+  so it could never match); or set with nothing to mint with (neither that caller's machine
+  key nor the dev key).
+- `M2M_MACHINE_KEY_AUTOMATION_SERVICE`, `M2M_MACHINE_KEY_AI_SERVICE` — that caller's Clerk
+  Machine Secret Key (production). One Clerk Machine per caller, so a token's `sub` names the
+  caller and one can be revoked without the other. Two callers configured with the same key is
+  fatal at startup.
+- `DEV_M2M_SIGNING_KEY_FILE` — path to an RSA private key PEM; when set, tokens are signed
+  locally instead of minted by Clerk (compose mounts
+  `meta/dev-keys/dev-only-do-not-use.key.pem`). Setting it **and** any `M2M_MACHINE_KEY_*` is
+  fatal at startup: one trust anchor per process. If it does not match the verification key
+  the service logs a warning, since every token it mints would then introspect as inactive.
 - `CORS_ALLOWED_ORIGIN` — frontend origin allowed to call the public routes (default
   `http://localhost:3000`).

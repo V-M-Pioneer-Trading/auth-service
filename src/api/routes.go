@@ -27,7 +27,10 @@ type Config struct {
 	// means the route rejects every caller (see introspect.go) — production
 	// has no AUTH_INTROSPECTION_SECRET until meta#80 step 3 applies it.
 	IntrospectionSecret string
-	Poller              *poller.Poller
+	// M2M is the machine-token minting table (decision 22). The zero value
+	// enables no caller: the route stays mounted and answers 401 to everyone.
+	M2M    M2MConfig
+	Poller *poller.Poller
 }
 
 type handlers struct {
@@ -47,6 +50,12 @@ func SetUpRouter(cfg Config) (*mux.Router, error) {
 	// Empty is not a collision — it is the fail-closed state.
 	if cfg.IntrospectionSecret != "" && cfg.IntrospectionSecret == cfg.SharedSecret {
 		return nil, errors.New("the introspection secret must not be the same value as the vault's shared secret")
+	}
+	// The same rule for the per-caller mint secrets, repeated for the same
+	// reason: newM2MHandler validates before it builds anything.
+	m2m, err := newM2MHandler(cfg.M2M, cfg.SharedSecret, cfg.IntrospectionSecret, v.publicKey)
+	if err != nil {
+		return nil, err
 	}
 
 	r := mux.NewRouter()
@@ -72,6 +81,13 @@ func SetUpRouter(cfg Config) (*mux.Router, error) {
 	// meta/fixtures/introspection.json. Methods(POST) is what makes a GET a 405
 	// rather than an answer — a token must never travel in a URL.
 	r.HandleFunc("/auth/v1/introspect", v.introspectHandler(cfg.IntrospectionSecret)).Methods(http.MethodPost)
+
+	// POST /auth/v1/m2m-token sits next to introspection for the same reasons:
+	// bare, same listener, never behind Caddy (decision 22 keeps decision 9's
+	// network picture), and its callers are headless services on the host.
+	// POST only, so a GET is a 405 rather than an answer. corsMiddleware does
+	// not allow X-M2M-Caller-Secret, and that is deliberate: no browser caller.
+	r.Handle("/auth/v1/m2m-token", m2m).Methods(http.MethodPost)
 
 	// GET /auth/v1/status is also mounted bare: decision 8 calls it "the
 	// second instance" of the existing GET /autopilot/status pattern, which
