@@ -130,6 +130,7 @@ func ReadM2MConfig(sharedSecret, introspectionSecret string) (M2MConfig, error) 
 		}
 		cfg.DevSigningKeyPEM = string(pem)
 	}
+	cfg.clerkURL = clerkURLFromEnv(os.Getenv("CLERK_API_BASE_URL"))
 	if err := validateM2MConfig(cfg, sharedSecret, introspectionSecret); err != nil {
 		return M2MConfig{}, err
 	}
@@ -620,4 +621,15 @@ func devMinter(key *rsa.PrivateKey, caller, scopes, issuer string, now func() ti
 		token.Header["kid"] = devM2MKeyID
 		return token.SignedString(key)
 	}
+}
+
+// clerkURLFromEnv turns CLERK_API_BASE_URL into the mint endpoint. Unset
+// returns "", which newM2MHandler reads as the production clerkM2MTokensURL, so
+// behaviour is unchanged unless the variable is set. It exists so an
+// out-of-process contract suite can point the service at a stub Clerk.
+func clerkURLFromEnv(base string) string {
+	if base == "" {
+		return ""
+	}
+	return strings.TrimRight(base, "/") + "/v1/m2m_tokens"
 }

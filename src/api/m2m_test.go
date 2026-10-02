@@ -1318,3 +1318,42 @@ func TestM2MFailedMintIsLoggedOnceWhateverTheWaiters(t *testing.T) {
 		t.Fatalf("one failed mint (calls: %d) was logged %d times, want 1 (log: %q)", clerk.calls(), n, buf.String())
 	}
 }
+
+func TestClerkURLFromEnv(t *testing.T) {
+	for base, want := range map[string]string{
+		"":                         "",
+		"http://stub:1234":         "http://stub:1234/v1/m2m_tokens",
+		"http://stub:1234/":        "http://stub:1234/v1/m2m_tokens",
+		"https://api.clerk.com":    clerkM2MTokensURL,
+		"https://api.clerk.com///": clerkM2MTokensURL,
+	} {
+		if got := clerkURLFromEnv(base); got != want {
+			t.Errorf("clerkURLFromEnv(%q) = %q, want %q", base, got, want)
+		}
+	}
+}
+
+// With CLERK_API_BASE_URL unset the config carries no override, so the handler
+// falls back to the production URL: the variable changes nothing in production.
+func TestReadM2MConfigClerkBaseURL(t *testing.T) {
+	for _, k := range []string{"M2M_CALLER_SECRET_AUTOMATION_SERVICE", "M2M_CALLER_SECRET_AI_SERVICE",
+		"M2M_MACHINE_KEY_AUTOMATION_SERVICE", "M2M_MACHINE_KEY_AI_SERVICE", "DEV_M2M_SIGNING_KEY_FILE"} {
+		t.Setenv(k, "")
+	}
+	t.Setenv("CLERK_API_BASE_URL", "")
+	cfg, err := ReadM2MConfig("vault", "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if cfg.clerkURL != "" {
+		t.Errorf("unset CLERK_API_BASE_URL must leave the production default, got %q", cfg.clerkURL)
+	}
+	t.Setenv("CLERK_API_BASE_URL", "http://stub.test:9/")
+	cfg, err = ReadM2MConfig("vault", "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if cfg.clerkURL != "http://stub.test:9/v1/m2m_tokens" {
+		t.Errorf("got %q", cfg.clerkURL)
+	}
+}
