@@ -41,7 +41,7 @@ export function send(port: number, opts: RequestOptions): Promise<Reply> {
         res.on("end", () => {
           const text = Buffer.concat(chunks).toString("utf8");
           resolve({
-            request: `${opts.method ?? "GET"} ${opts.path}`,
+            request: `${opts.method ?? "GET"} ${opts.path.length > 90 ? `${opts.path.slice(0, 90)}...` : opts.path}`,
             status: res.statusCode ?? 0,
             headers: res.headers,
             rawHeaders: res.rawHeaders,
