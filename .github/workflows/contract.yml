@@ -1,0 +1,42 @@
+name: contract
+
+# Black-box HTTP contract suite: builds the real image and drives it from
+# outside, so the Go service and its TypeScript port are held to one definition
+# of "same". It must stay green, unchanged, against both. See contract/README.md.
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  contract:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "24"
+          cache: npm
+          cache-dependency-path: contract/package-lock.json
+
+      - name: Build the image under test
+        run: docker build -t auth-service:contract .
+
+      - name: Install the suite's dev dependencies
+        working-directory: contract
+        run: npm ci
+
+      - name: Typecheck the suite
+        working-directory: contract
+        run: npm run typecheck
+
+      - name: Run the contract suite against the image
+        working-directory: contract
+        env:
+          CONTRACT_IMAGE: auth-service:contract
+        run: node --test
