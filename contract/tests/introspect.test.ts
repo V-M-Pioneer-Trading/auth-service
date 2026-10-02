@@ -177,8 +177,11 @@ describe("the 8 KiB body cap", () => {
 describe("what verifies, and what is {active:false}", () => {
   const now = () => nowSeconds();
   const inactive = async (label: string, token: string) => {
-    expectJson(await api.introspect(token), 200, INACTIVE, { noStore: true });
-    void label;
+    try {
+      expectJson(await api.introspect(token), 200, INACTIVE, { noStore: true });
+    } catch (err) {
+      throw new Error(`token ${label} must introspect as {"active":false}: ${(err as Error).message}`);
+    }
   };
 
   it("answers the exact shape for a good operator token and leaks no other claim", async () => {

@@ -42,6 +42,31 @@ export function pinnedHeaders(r: Reply): Record<string, string | string[]> {
   return out;
 }
 
+interface Shape {
+  status: number;
+  headers: Record<string, string | string[]>;
+  body?: unknown;
+}
+
+/** One line per difference, so a failure says what moved without a diff to decode. */
+function explain(request: string, actual: Shape, expected: Shape): string {
+  const lines = [`${request}`];
+  if (actual.status !== expected.status) lines.push(`  status: expected ${expected.status}, got ${actual.status}`);
+  for (const name of new Set([...Object.keys(expected.headers), ...Object.keys(actual.headers)])) {
+    const want = JSON.stringify(expected.headers[name]);
+    const got = JSON.stringify(actual.headers[name]);
+    if (want !== got) lines.push(`  header ${name}: expected ${want ?? "<absent>"}, got ${got ?? "<absent>"}`);
+  }
+  if ("body" in expected && JSON.stringify(actual.body) !== JSON.stringify(expected.body)) {
+    lines.push(`  body: expected ${JSON.stringify(expected.body)}`, `        got      ${JSON.stringify(actual.body)}`);
+  }
+  return lines.join("\n");
+}
+
+function check(r: Reply, actual: Shape, expected: Shape): void {
+  assert.deepStrictEqual(actual, expected, explain(r.request, actual, expected));
+}
+
 export interface Expectation {
   /** Headers expected beyond CORS. Everything pinned and not listed must be absent. */
   headers?: Record<string, string>;
@@ -64,10 +89,7 @@ export function expectJson(r: Reply, status: number, body: unknown, e: Expectati
   } catch {
     parsed = `<not JSON> ${JSON.stringify(r.text.slice(0, 200))}`;
   }
-  assert.deepStrictEqual(
-    { status: r.status, headers: pinnedHeaders(r), body: parsed },
-    { status, headers: expectedHeaders(e, extra), body },
-  );
+  check(r, { status: r.status, headers: pinnedHeaders(r), body: parsed }, { status, headers: expectedHeaders(e, extra), body });
 }
 
 /** A plain-text body, byte for byte, as Go's http.Error writes it. */
@@ -75,19 +97,16 @@ export function expectText(r: Reply, status: number, text: string | RegExp, e: E
   const extra = { "content-type": "text/plain; charset=utf-8", "x-content-type-options": "nosniff" };
   const expectedHead = { status, headers: expectedHeaders(e, extra) };
   if (typeof text === "string") {
-    assert.deepStrictEqual({ status: r.status, headers: pinnedHeaders(r), body: r.text }, { ...expectedHead, body: text });
+    check(r, { status: r.status, headers: pinnedHeaders(r), body: r.text }, { ...expectedHead, body: text });
   } else {
-    assert.deepStrictEqual({ status: r.status, headers: pinnedHeaders(r) }, expectedHead);
-    assert.match(r.text, text);
+    check(r, { status: r.status, headers: pinnedHeaders(r) }, expectedHead);
+    assert.match(r.text, text, `${r.request}: body`);
   }
 }
 
 /** No body at all, with exactly these pinned headers. */
 export function expectEmpty(r: Reply, status: number, e: Expectation = {}): void {
-  assert.deepStrictEqual(
-    { status: r.status, headers: pinnedHeaders(r), body: r.text },
-    { status, headers: expectedHeaders(e, {}), body: "" },
-  );
+  check(r, { status: r.status, headers: pinnedHeaders(r), body: r.text }, { status, headers: expectedHeaders(e, {}), body: "" });
 }
 
 /** The `{"error":{"message":…}}` envelope every authentication rejection uses. */
