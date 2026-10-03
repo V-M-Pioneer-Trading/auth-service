@@ -133,7 +133,7 @@ func (v *verifier) verifyToken(token string) (VerifiedToken, error) {
 // scopeStringFrom returns the `scope` claim as the single space-delimited
 // string the contract promises. A string claim is passed through untouched —
 // irregular whitespace and all — because the center returns it verbatim and
-// every client splits on whitespace runs.
+// every client splits it, on runs of space, tab, CR and LF only (fixture v6).
 func scopeStringFrom(claims jwt.MapClaims) string {
 	switch s := claims["scope"].(type) {
 	case string:

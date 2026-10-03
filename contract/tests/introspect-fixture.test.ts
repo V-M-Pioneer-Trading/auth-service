@@ -8,7 +8,7 @@
 // quietly being checked less.
 import assert from "node:assert/strict";
 import { after, before, describe, it } from "node:test";
-import { firstOccurrenceTwin, fixtureSha256, hasDuplicateKey, loadFixture, recordedSha256 } from "../lib/fixture.ts";
+import { ambiguousKey, fixtureSha256, loadFixture, recordedSha256, unambiguousTwin } from "../lib/fixture.ts";
 import type { FixtureCase } from "../lib/fixture.ts";
 import { expectJson } from "../lib/expect.ts";
 import { send } from "../lib/http.ts";
@@ -35,14 +35,14 @@ describe("the vendored fixture is the copy it claims to be", () => {
       "src/api/testdata/introspection.json drifted from meta: re-copy it and update SOURCE.txt (and check .gitattributes still marks it -text)",
     );
   });
-  it("is version 5 with 41 + 13 cases", () => {
-    assert.equal(fixture.version, 5);
-    assert.equal(fixture.cases.length, 41);
-    assert.equal(fixture.gatewayCases.length, 13);
+  it("is version 6 with 51 + 14 cases", () => {
+    assert.equal(fixture.version, 6);
+    assert.equal(fixture.cases.length, 51);
+    assert.equal(fixture.gatewayCases.length, 14);
   });
 });
 
-type Class = "notCalled" | "active" | "activeNoScopeKey" | "inactive" | "callerSecret" | "duplicateKey" | "clientOnly";
+type Class = "notCalled" | "active" | "activeNoScopeKey" | "inactive" | "callerSecret" | "ambiguousKeys" | "clientOnly";
 
 function classify(c: FixtureCase): Class {
   const k = c.center;
@@ -56,7 +56,7 @@ function classify(c: FixtureCase): Class {
   } catch {
     return "clientOnly"; // a 200 that is not the contract (the HTML body)
   }
-  if (hasDuplicateKey(k.body ?? "")) return "duplicateKey";
+  if (ambiguousKey(k.body ?? "")) return "ambiguousKeys";
   if (doc.active !== true) return "inactive";
   return "scope" in doc ? "active" : "activeNoScopeKey";
 }
@@ -70,7 +70,7 @@ function bearerToken(c: FixtureCase): string {
 const kindOf = (sub: string) => (sub.startsWith("user_") ? "operator" : "machine");
 
 const all = [...fixture.cases, ...fixture.gatewayCases];
-const counts: Record<Class, number> = { notCalled: 0, active: 0, activeNoScopeKey: 0, inactive: 0, callerSecret: 0, duplicateKey: 0, clientOnly: 0 };
+const counts: Record<Class, number> = { notCalled: 0, active: 0, activeNoScopeKey: 0, inactive: 0, callerSecret: 0, ambiguousKeys: 0, clientOnly: 0 };
 const ep = fixture.contract.endpoint;
 
 async function callCenter(token: string, secret: string): Promise<ReturnType<typeof send>> {
@@ -128,11 +128,13 @@ describe("every fixture case, answered by the center", () => {
         });
         break;
 
-      case "duplicateKey":
+      case "ambiguousKeys":
         it(label, async () => {
-          // The center writes a well-formed object, never a repeated key: for a token carrying the
-          // FIRST `sub` its answer is the fixture body with the repeat removed.
-          const twin = firstOccurrenceTwin(c.center.body as string) as { sub: string; scope: string; exp: number };
+          // The center writes a well-formed object, never a repeated key (exact or ignoring case)
+          // and never a miscased contract key: for a token carrying the twin's claims its answer
+          // is the fixture body with later repeats dropped and a miscased contract key respelled.
+          const twin = unambiguousTwin(c.center.body as string) as { sub: string; scope: string; exp: number };
+          assert.equal(ambiguousKey(JSON.stringify(twin)), undefined, "the twin must be unambiguous");
           const token = lab.token({ sub: twin.sub, scope: twin.scope, exp: twin.exp });
           const r = await callCenter(token, lab.secrets.introspection);
           expectJson(r, 200, { ...twin, kind: kindOf(twin.sub) }, { noStore: true });
@@ -144,11 +146,11 @@ describe("every fixture case, answered by the center", () => {
   it("the classification totals are exactly the ones this suite was written against", () => {
     assert.deepEqual(counts, {
       notCalled: 21, // incl. 4 multi-line Authorization cases
-      active: 16,
+      active: 24, // incl. version 6's eight scope-separator cases, returned verbatim
       activeNoScopeKey: 3, // client-only: the center always sends `scope`
       inactive: 4,
       callerSecret: 2,
-      duplicateKey: 2,
+      ambiguousKeys: 5, // v5: a repeated sub (x2); v6: Active, Scope, Kind
       clientOnly: 6, // transport failures, a 500, an HTML body
     });
   });

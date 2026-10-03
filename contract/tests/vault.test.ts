@@ -222,6 +222,19 @@ describe("the session gate on the operator routes", () => {
     assert.notEqual((await post("/api/auth/v1/agent-token", `Bearer ${arrayScoped}`)).status, 403);
   });
 
+  it("splits the scope on runs of space, tab, CR and LF and on nothing else (fixture v6)", async () => {
+    const msg = "this action requires a scope this session does not carry";
+    for (const scope of ["fleet:control\tagent:reset", "fleet:control\r\nagent:reset", "  agent:reset  "]) {
+      const r = await post("/api/auth/v1/agent-token", `Bearer ${lab.token({ scope })}`);
+      assert.notEqual(r.status, 401, JSON.stringify(scope));
+      assert.notEqual(r.status, 403, JSON.stringify(scope));
+    }
+    for (const joiner of ["\u000b", "\u000c", "\u0085", " ", " ", "　", "﻿"]) {
+      const token = lab.token({ scope: `fleet:control${joiner}agent:reset` });
+      expectAuthError(await post("/api/auth/v1/agent-token", `Bearer ${token}`), 403, msg);
+    }
+  });
+
   it("authenticates before it reads the body", async () => {
     const r = await send(api.port, { method: "POST", path: "/api/auth/v1/register", headers: { "content-type": "application/json" }, body: "{not json" });
     expectAuthError(r, 401, "a bearer token is required");

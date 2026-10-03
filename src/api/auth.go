@@ -93,13 +93,28 @@ func (v *verifier) verify(w http.ResponseWriter, r *http.Request, hasScope func(
 		return false
 	}
 
-	// strings.Fields is the whitespace-RUN split every verifier in the fleet
-	// performs on the verbatim scope string.
-	if !hasScope(strings.Fields(verified.Scope)) {
+	// The same split every introspection client performs on the verbatim
+	// scope string (meta fixture version 6): runs of space, tab, CR and LF.
+	if !hasScope(splitScopes(verified.Scope)) {
 		writeAuthError(w, http.StatusForbidden, "this action requires a scope this session does not carry")
 		return false
 	}
 	return true
+}
+
+// isScopeSeparator reports whether r separates scopes in a scope string:
+// space, tab, CR and LF, and nothing else (meta fixture version 6). Not VT or
+// FF, not a no-break space, not any other Unicode space — so "fleet:control"
+// + U+00A0 + "agent:reset" is ONE scope and carries neither. strings.Fields,
+// used here before, split on every Unicode space and let such a token through
+// a route every introspection client would have refused it on.
+func isScopeSeparator(r rune) bool {
+	return r == ' ' || r == '\t' || r == '\r' || r == '\n'
+}
+
+// splitScopes splits a scope string on runs of separators, empties discarded.
+func splitScopes(scope string) []string {
+	return strings.FieldsFunc(scope, isScopeSeparator)
 }
 
 func issuerOption(issuer string) jwt.ParserOption {
