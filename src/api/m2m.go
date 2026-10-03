@@ -135,8 +135,8 @@ func ReadM2MConfig(sharedSecret, introspectionSecret string) (M2MConfig, error) 
 	if err != nil {
 		return M2MConfig{}, err
 	}
-	if clerkURL != "" {
-		// Scheme and host only: never a path, and the validation already refused credentials.
+	if clerkURL != "" && cfg.DevSigningKeyPEM == "" {
+		// Clerk mode only (the dev key mints locally). Scheme and host only: never a path, and the validation already refused credentials.
 		u, _ := url.Parse(clerkURL)
 		log.Default().Printf("CLERK_API_BASE_URL is set: minting via %s://%s instead of api.clerk.com", u.Scheme, u.Host)
 	}

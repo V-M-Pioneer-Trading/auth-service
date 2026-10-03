@@ -145,7 +145,9 @@ describe("where the token travels", () => {
         headers: ["host", `127.0.0.1:${api.port}`, "content-type", "application/x-www-form-urlencoded", "x-introspection-secret", a, "x-introspection-secret", b],
         body,
       });
-    assert.equal(((await twice(lab.secrets.introspection, "wrong")).json() as { active: boolean }).active, true);
+    const first = await twice(lab.secrets.introspection, "wrong");
+    assert.equal(first.status, 200, `the first header is the right one: ${first.text}`);
+    assert.equal((first.json() as { active: boolean }).active, true);
     expectAuthError(await twice("wrong", lab.secrets.introspection), 401, REQUIRED);
   });
   it("uses the first of several token parameters", async () => {
@@ -331,8 +333,11 @@ describe("what verifies, and what is {active:false}", () => {
     };
     for (const [label, token] of Object.entries(bad)) {
       const r = await api.introspect(token);
-      assert.equal(r.status, 200, label);
-      expectJson(r, 200, INACTIVE, { noStore: true });
+      try {
+        expectJson(r, 200, INACTIVE, { noStore: true });
+      } catch (err) {
+        throw new Error(`rejected-token case "${label}" must introspect as {"active":false}: ${(err as Error).message}`);
+      }
     }
   });
 

@@ -182,7 +182,9 @@ async function launch(spec: ServiceSpec): Promise<Service> {
       void exited.then(() => {
         gone = true;
       });
-      while (!gone) {
+      for (let attempt = 0; !gone; attempt++) {
+        if (attempt >= 20) throw new Error(`the service would not stop after 20 kill attempts. Output:
+${output.join("")}`);
         kill();
         await Promise.race([exited, sleep(500)]);
       }
@@ -199,7 +201,7 @@ export async function startService(spec: ServiceSpec, timeoutMs = 60_000): Promi
     try {
       return await startOnce(spec, timeoutMs);
     } catch (err) {
-      if (attempt < 3 && /address already in use|port is already allocated|Bind for .* failed/i.test(String(err))) continue;
+      if (attempt < 3 && /address already in use|port is already allocated|Bind for .* failed|Only one usage of each socket address/i.test(String(err))) continue;
       throw err;
     }
   }

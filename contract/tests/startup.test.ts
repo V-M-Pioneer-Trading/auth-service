@@ -64,8 +64,18 @@ describe("required settings", () => {
 describe("CLERK_API_BASE_URL (the one setting only the contract harness uses)", () => {
   it("refuses a value that is not an http(s) URL with a host and no credentials, query or fragment, and never prints it", async () => {
     for (const bad of ["not a url", "ftp://stub.example", "http://", "http://user:hunter2@stub.example", "http://stub.example?x=1", "http://stub.example#frag"]) {
+      const { output } = await lab.startExpectingExit({ m2m: "clerk", env: { CLERK_API_BASE_URL: bad } });
+      assert.ok(!output.includes(bad), `the refusal repeated the bad value ${JSON.stringify(bad)}`);
       await refuses({ m2m: "clerk", env: { CLERK_API_BASE_URL: bad } }, /CLERK_API_BASE_URL/);
     }
+  });
+  it("logs only scheme://host of a valid override, never its path", async () => {
+    const base = lab.stubUrl(lab.clerk.port);
+    const api = await lab.start({ m2m: "clerk", env: { CLERK_API_BASE_URL: `${base}/base-path-sentinel` } });
+    const log = api.output();
+    assert.ok(log.includes(base), "the log should name scheme://host");
+    assert.ok(!log.includes("base-path-sentinel"), "the path must not be logged");
+    await api.stop();
   });
   it("refuses a bad value even in dev mode, where it would not be used", async () => {
     await refuses({ m2m: "dev", env: { CLERK_API_BASE_URL: "ftp://stub.example" } }, /CLERK_API_BASE_URL/);
