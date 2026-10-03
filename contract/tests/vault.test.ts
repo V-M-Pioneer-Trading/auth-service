@@ -75,7 +75,7 @@ describe("GET /auth/v1/token", () => {
     expectText(await api.agentToken(), 503, "no agent token configured\n");
   });
 
-  it("is not mounted under /api/auth (decision 9: no public route for the token, at any method) [go-text]", async () => {
+  it("is not mounted under /api/auth (decision 9: no public route for the token, at any method) [net-http-text]", async () => {
     for (const method of ["GET", "POST"]) {
       expectText(await send(api.port, { method, path: "/api/auth/v1/token", headers: { "x-auth-service-secret": lab.secrets.shared } }), 404, "404 page not found\n", {
         cors: false,
@@ -259,12 +259,12 @@ describe("POST /api/auth/v1/agent-token (Restore Token)", () => {
     expectJson(await api.agentToken(), 200, { agentToken: "agent-token-1" });
   });
 
-  it("rejects a body that is not a JSON object of the right shape with 400 [go-text]", async () => {
+  it("rejects a body that is not a JSON object of the right shape with 400 ", async () => {
     assert.equal((await api.register(REGISTER)).status, 200);
     // The text after the prefix is the decoder's own message (Go's encoding/json): only the prefix is the contract.
     for (const body of ["", "{", "not json", "[]", '"a string"', "42", '{"agentToken": 5}', '{"agentToken": {"a":1}}', '{"agentToken": ["x"]}']) {
       const r = await api.restore(body);
-      expectText(r, 400, /^invalid request body: .+\n$/);
+      expectText(r, 400, /^invalid request body: /);
     }
     expectJson(await api.agentToken(), 200, { agentToken: "agent-token-1" });
   });

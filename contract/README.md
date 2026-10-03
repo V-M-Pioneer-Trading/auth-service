@@ -82,12 +82,18 @@ prints one.
 | `tests/routing.test.ts` | the whole 404/405/301 table, HEAD, OPTIONS, CORS, path cleaning |
 | `tests/startup.test.ts` | configuration the service refuses to start with, key formats, log hygiene |
 
-## Test titles tagged `[go-text]`
+## Test titles tagged `[net-http-text]`
 
-A title ending in `[go-text]` pins wording that comes from Go's own standard
-library (`404 page not found`, the `encoding/json` decode messages, the bytes of
-`http.Error`) rather than from this service. They are the first place to look
-when a port differs only in text.
+A title ending in `[net-http-text]` pins a fixed text that Go's `net/http` writes
+itself (`404 page not found`, with its `text/plain; charset=utf-8` and
+`nosniff`), and it is kept **exact** on purpose: it is part of the router
+contract, and a port can reproduce it trivially. The 405 answers are empty, so
+there is no text to pin.
+
+Wording that Go's *other* libraries generate (the `encoding/json` decode
+messages after `invalid request body: `, the error text of a failed upstream
+call in a 502) is **not** pinned, permanently, with no strict mode: those tests
+assert the status, the content type and the stable prefix only.
 
 ## Not covered
 
@@ -240,8 +246,8 @@ each one is a place a "cleaner" implementation fails the contract.
     error). No content type is required. There is no body size cap on these two
     routes (not pinned by the suite). A decode failure is `400 invalid request body: <Go's message>\n`
     (`EOF`, `unexpected EOF`, `json: cannot unmarshal number into Go struct
-    field …`): the suite pins the prefix and that it ends in a newline, **not**
-    the message after it.
+    field …`): the suite pins the status, the content type and the prefix
+    `invalid request body: `, **not** the message after it or its newline.
 23. **Restore Token**: `409` (text) `no credential configured to restore a token
     onto` when nothing is registered; `{"status":"restored"}` otherwise. It
     replaces only the agent token, stores it verbatim, clears
