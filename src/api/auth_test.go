@@ -126,10 +126,10 @@ func TestScopeGateSplitsOnSpaceTabCRLFOnly(t *testing.T) {
 		{"joined by VT", "fleet:control\vagent:reset", http.StatusForbidden},
 		{"joined by FF", "fleet:control\fagent:reset", http.StatusForbidden},
 		{"joined by NEXT LINE", "fleet:control\u0085agent:reset", http.StatusForbidden},
-		{"joined by a no-break space", "fleet:control agent:reset", http.StatusForbidden},
-		{"joined by an em space", "fleet:control agent:reset", http.StatusForbidden},
-		{"joined by an ideographic space", "fleet:control　agent:reset", http.StatusForbidden},
-		{"agent:reset followed by a no-break space", "agent:reset ", http.StatusForbidden},
+		{"joined by a no-break space", "fleet:control\u00a0agent:reset", http.StatusForbidden},
+		{"joined by an em space", "fleet:control\u2003agent:reset", http.StatusForbidden},
+		{"joined by an ideographic space", "fleet:control\u3000agent:reset", http.StatusForbidden},
+		{"agent:reset followed by a no-break space", "agent:reset\u00a0", http.StatusForbidden},
 	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {

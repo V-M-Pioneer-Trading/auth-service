@@ -135,6 +135,8 @@ describe("every fixture case, answered by the center", () => {
           // is the fixture body with later repeats dropped and a miscased contract key respelled.
           const twin = unambiguousTwin(c.center.body as string) as { sub: string; scope: string; exp: number };
           assert.equal(ambiguousKey(JSON.stringify(twin)), undefined, "the twin must be unambiguous");
+          // The center derives `kind` from `sub`; a twin that disagreed could not be produced.
+          assert.equal((twin as { kind?: string }).kind, kindOf(twin.sub), "the twin's kind must be the derived one");
           const token = lab.token({ sub: twin.sub, scope: twin.scope, exp: twin.exp });
           const r = await callCenter(token, lab.secrets.introspection);
           expectJson(r, 200, { ...twin, kind: kindOf(twin.sub) }, { noStore: true });

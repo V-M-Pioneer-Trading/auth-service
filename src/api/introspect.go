@@ -60,7 +60,8 @@ type VerifiedToken struct {
 	// Scope is returned VERBATIM: whatever the claim held, unsplit and
 	// unnormalised, whether it arrived as a string or as an array (an array is
 	// joined with single spaces, which is the only transformation there is).
-	// Splitting is the caller's job — every client splits on whitespace runs.
+	// Splitting is the caller's job — every client splits on runs of space,
+	// tab, CR and LF, and on nothing else (fixture v6).
 	Scope string
 	// Expiry is the `exp` claim in seconds since the epoch.
 	Expiry int64

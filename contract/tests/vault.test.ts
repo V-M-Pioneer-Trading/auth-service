@@ -229,7 +229,7 @@ describe("the session gate on the operator routes", () => {
       assert.notEqual(r.status, 401, JSON.stringify(scope));
       assert.notEqual(r.status, 403, JSON.stringify(scope));
     }
-    for (const joiner of ["\u000b", "\u000c", "\u0085", " ", " ", "　", "﻿"]) {
+    for (const joiner of ["\u000b", "\u000c", "\u0085", "\u00a0", "\u2003", "\u3000", "\ufeff"]) {
       const token = lab.token({ scope: `fleet:control${joiner}agent:reset` });
       expectAuthError(await post("/api/auth/v1/agent-token", `Bearer ${token}`), 403, msg);
     }
