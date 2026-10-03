@@ -1318,3 +1318,74 @@ func TestM2MFailedMintIsLoggedOnceWhateverTheWaiters(t *testing.T) {
 		t.Fatalf("one failed mint (calls: %d) was logged %d times, want 1 (log: %q)", clerk.calls(), n, buf.String())
 	}
 }
+
+func TestClerkURLFromEnv(t *testing.T) {
+	for base, want := range map[string]string{
+		"":                         "",
+		"http://stub:1234":         "http://stub:1234/v1/m2m_tokens",
+		"http://stub:1234/":        "http://stub:1234/v1/m2m_tokens",
+		"https://api.clerk.com":    clerkM2MTokensURL,
+		"https://api.clerk.com///": clerkM2MTokensURL,
+		"https://proxy.test/clerk": "https://proxy.test/clerk/v1/m2m_tokens",
+	} {
+		got, err := clerkURLFromEnv(base)
+		if err != nil || got != want {
+			t.Errorf("clerkURLFromEnv(%q) = %q, %v, want %q", base, got, err, want)
+		}
+	}
+}
+
+func TestClerkURLFromEnvRefusesUnsafeValues(t *testing.T) {
+	for _, base := range []string{
+		"not a url", "stub:1234", "//stub", "ftp://stub", "file:///etc/passwd", "http://", "https:///v1",
+		"http://user:hunter2@stub", "http://user@stub", "http://stub?x=1", "http://stub?", "http://stub#frag", "http://stub/#",
+	} {
+		got, err := clerkURLFromEnv(base)
+		if err == nil {
+			t.Errorf("clerkURLFromEnv(%q) = %q, want an error", base, got)
+			continue
+		}
+		if strings.Contains(err.Error(), "hunter2") || strings.Contains(err.Error(), base) {
+			t.Errorf("the error repeats the value: %v", err)
+		}
+		if !strings.Contains(err.Error(), "CLERK_API_BASE_URL") {
+			t.Errorf("the error does not name the variable: %v", err)
+		}
+	}
+}
+
+func TestReadM2MConfigRefusesABadClerkBaseURL(t *testing.T) {
+	for _, k := range []string{"M2M_CALLER_SECRET_AUTOMATION_SERVICE", "M2M_CALLER_SECRET_AI_SERVICE",
+		"M2M_MACHINE_KEY_AUTOMATION_SERVICE", "M2M_MACHINE_KEY_AI_SERVICE", "DEV_M2M_SIGNING_KEY_FILE"} {
+		t.Setenv(k, "")
+	}
+	t.Setenv("CLERK_API_BASE_URL", "http://user:hunter2@stub")
+	if _, err := ReadM2MConfig("vault", ""); err == nil {
+		t.Fatal("expected a startup error")
+	}
+}
+
+// With CLERK_API_BASE_URL unset the config carries no override, so the handler
+// falls back to the production URL: the variable changes nothing in production.
+func TestReadM2MConfigClerkBaseURL(t *testing.T) {
+	for _, k := range []string{"M2M_CALLER_SECRET_AUTOMATION_SERVICE", "M2M_CALLER_SECRET_AI_SERVICE",
+		"M2M_MACHINE_KEY_AUTOMATION_SERVICE", "M2M_MACHINE_KEY_AI_SERVICE", "DEV_M2M_SIGNING_KEY_FILE"} {
+		t.Setenv(k, "")
+	}
+	t.Setenv("CLERK_API_BASE_URL", "")
+	cfg, err := ReadM2MConfig("vault", "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if cfg.clerkURL != "" {
+		t.Errorf("unset CLERK_API_BASE_URL must leave the production default, got %q", cfg.clerkURL)
+	}
+	t.Setenv("CLERK_API_BASE_URL", "http://stub.test:9/")
+	cfg, err = ReadM2MConfig("vault", "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if cfg.clerkURL != "http://stub.test:9/v1/m2m_tokens" {
+		t.Errorf("got %q", cfg.clerkURL)
+	}
+}

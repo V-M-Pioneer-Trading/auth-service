@@ -1,0 +1,18 @@
+{
+  "name": "auth-service-contract",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "description": "Black-box HTTP contract suite for auth-service. Runs against a container image and knows nothing about the language it is written in.",
+  "scripts": {
+    "typecheck": "tsc --noEmit",
+    "test": "node --test --test-timeout=120000"
+  },
+  "engines": {
+    "node": ">=24"
+  },
+  "devDependencies": {
+    "@types/node": "^24.0.0",
+    "typescript": "~5.9.0"
+  }
+}
