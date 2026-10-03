@@ -2,8 +2,8 @@ introspection.json in this directory is a VERBATIM copy. Do not edit it here.
 
   original: meta/fixtures/introspection.json
             (V-M-Pioneer-Trading/meta, repo root `fixtures/introspection.json`)
-  meta commit: aa877e734f40078aca91b7f9b85e7502cd5916be (2026-09-30)
-  sha256: ffbb7aa932d8d8523da125a0ff9a93f1fd771d5a32841d7e03ee25ec7b1315b7
+  meta commit: 993fea9eb1c38de03b9bea14d6e03d8b450750cc (2026-10-03, fixture version 6)
+  sha256: 90562110d24e47bfdcbf7ff05f1112b4bc840835bf728fa7f6bd81ff67bbeb9c
 
 The sha256 above is the hash of the LF bytes of introspection.json and is
 asserted by introspection_fixture_test.go, so the pin enforces itself instead
@@ -21,3 +21,11 @@ implement. What is normative here is the `contract` block (endpoint, method,
 content type, body template, secret header, env var names) and every `center`
 object inside a case — those are this service's own output. See
 introspection_fixture_test.go, which drives the center through all of them.
+
+The meta commit above is the head of meta pull request #107, "Fixture v6: what
+separates scopes, and top-level keys ignoring case", merged with a merge
+commit so it lands on meta's main unchanged. Version 6's scope-separator
+cases are active answers the center produces verbatim; its key-case cases are
+not producible (the center marshals a struct) and are checked through their
+well-formed twin. The same version moved this service's own agent:reset gate
+from strings.Fields to the clients' split: runs of space, tab, CR and LF.

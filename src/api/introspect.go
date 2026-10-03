@@ -60,7 +60,8 @@ type VerifiedToken struct {
 	// Scope is returned VERBATIM: whatever the claim held, unsplit and
 	// unnormalised, whether it arrived as a string or as an array (an array is
 	// joined with single spaces, which is the only transformation there is).
-	// Splitting is the caller's job — every client splits on whitespace runs.
+	// Splitting is the caller's job — every client splits on runs of space,
+	// tab, CR and LF, and on nothing else (fixture v6).
 	Scope string
 	// Expiry is the `exp` claim in seconds since the epoch.
 	Expiry int64
@@ -133,7 +134,7 @@ func (v *verifier) verifyToken(token string) (VerifiedToken, error) {
 // scopeStringFrom returns the `scope` claim as the single space-delimited
 // string the contract promises. A string claim is passed through untouched —
 // irregular whitespace and all — because the center returns it verbatim and
-// every client splits on whitespace runs.
+// every client splits it, on runs of space, tab, CR and LF only (fixture v6).
 func scopeStringFrom(claims jwt.MapClaims) string {
 	switch s := claims["scope"].(type) {
 	case string:

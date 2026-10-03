@@ -86,7 +86,7 @@ against what its own route declares. The contract is fixed by
   this process. No reason for a rejection is returned: it is a probing oracle
   and the remedy is the same for all of them.
 - `scope` is **verbatim** — irregular whitespace and all. Every client splits
-  on whitespace runs. This service keeps no route-to-scope table.
+  it on runs of space, tab, CR and LF, and on nothing else (fixture v6). This service keeps no route-to-scope table.
 - `scope` is **always present** on an active answer, as `""` when the token
   carries no scopes (no claim, an empty string or an empty array). RFC 7662
   would allow leaving it out; this contract does not.

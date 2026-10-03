@@ -574,8 +574,8 @@ func TestIntrospectionDerivesKindFromTheSubjectPrefix(t *testing.T) {
 // TestIntrospectionReturnsScopeVerbatim — the center does not normalise. An
 // array claim is joined (the only transformation there is); a string claim
 // comes back byte for byte, irregular whitespace included, because every
-// client splits on whitespace runs and the fixture carries exactly such a
-// string.
+// client splits on runs of space, tab, CR and LF (and on nothing else, so a
+// no-break space must survive too) and the fixture carries such strings.
 func TestIntrospectionReturnsScopeVerbatim(t *testing.T) {
 	router, _, _ := newTestRouter(t)
 

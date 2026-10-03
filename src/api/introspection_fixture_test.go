@@ -91,8 +91,8 @@ func loadFixture(t *testing.T) fixtureFile {
 	if err := json.Unmarshal(raw, &f); err != nil {
 		t.Fatalf("the vendored fixture does not parse: %v", err)
 	}
-	if f.Version != 5 {
-		t.Fatalf("vendored fixture is version %d; this test was written against version 5 — re-read it before re-copying", f.Version)
+	if f.Version != 6 {
+		t.Fatalf("vendored fixture is version %d; this test was written against version 6 — re-read it before re-copying", f.Version)
 	}
 	return f
 }
@@ -143,7 +143,7 @@ const (
 	classCallerSecret                        // the 401 about OUR caller secret
 	classClientOnly                          // transport/5xx/garbage: a stub's job, not the center's
 	classActiveNoScopeKey                    // an active body WITHOUT `scope`: a client obligation, never the center's output
-	classDuplicateKey                        // a 200 naming a top-level key twice: never the center's output
+	classAmbiguousKeys                       // a 200 naming a top-level key twice (exactly or ignoring case), or a contract key miscased: never the center's output
 )
 
 // authorizationLines decodes request.authorization: a string is one header
@@ -188,26 +188,35 @@ func topLevelMembers(body string) (keys []string, values []json.RawMessage, ok b
 	return keys, values, true
 }
 
-// duplicateTopLevelKey reports the first top-level key the body names twice.
-func duplicateTopLevelKey(body string) (string, bool) {
+// contractKeys are the five keys the contract defines, spelled exactly.
+var contractKeys = map[string]bool{"active": true, "sub": true, "scope": true, "exp": true, "kind": true}
+
+// ambiguousTopLevelKey reports the first top-level key that a client must
+// refuse the body over (fixture versions 5 and 6): one equal to an earlier key
+// ignoring case — an exact repeat included — or a contract key spelled any way
+// but its own. encoding/json would bind either silently, so the raw members
+// are scanned.
+func ambiguousTopLevelKey(body string) (string, bool) {
 	keys, _, ok := topLevelMembers(body)
 	if !ok {
 		return "", false
 	}
 	seen := map[string]bool{}
 	for _, k := range keys {
-		if seen[k] {
+		folded := strings.ToLower(k)
+		if seen[folded] || (contractKeys[folded] && k != folded) {
 			return k, true
 		}
-		seen[k] = true
+		seen[folded] = true
 	}
 	return "", false
 }
 
-// withoutDuplicateKeys is the well-formed twin of a body with repeated
-// top-level keys: the FIRST occurrence of each key is kept, later ones dropped,
-// every value byte-for-byte as the fixture wrote it.
-func withoutDuplicateKeys(t *testing.T, body string) string {
+// unambiguousTwin is the well-formed twin of such a body: the FIRST
+// occurrence of each key ignoring case is kept and later ones dropped, and a
+// miscased contract key is respelled, every value byte-for-byte as the
+// fixture wrote it. It is the answer the center gives for the same token.
+func unambiguousTwin(t *testing.T, body string) string {
 	t.Helper()
 	keys, values, ok := topLevelMembers(body)
 	if !ok {
@@ -216,10 +225,14 @@ func withoutDuplicateKeys(t *testing.T, body string) string {
 	seen := map[string]bool{}
 	var parts []string
 	for i, k := range keys {
-		if seen[k] {
+		folded := strings.ToLower(k)
+		if seen[folded] {
 			continue
 		}
-		seen[k] = true
+		seen[folded] = true
+		if contractKeys[folded] {
+			k = folded
+		}
 		kb, err := json.Marshal(k)
 		if err != nil {
 			t.Fatal(err)
@@ -245,10 +258,10 @@ func classify(c fixtureCase) (centerClass, *centerBody) {
 		// A 200 whose body is not the contract (the malformed-JSON case).
 		return classClientOnly, nil
 	}
-	if _, dup := duplicateTopLevelKey(c.Center.Body); dup {
-		// encoding/json keeps the last of a repeated key and says nothing, so the
-		// raw body is scanned for it.
-		return classDuplicateKey, &body
+	if _, ambiguous := ambiguousTopLevelKey(c.Center.Body); ambiguous {
+		// encoding/json keeps the last of a repeated key, matches keys
+		// case-insensitively and says nothing, so the raw body is scanned.
+		return classAmbiguousKeys, &body
 	}
 	if !body.Active {
 		return classInactive, nil
@@ -269,8 +282,8 @@ func TestCenterProducesEveryFixtureResponse(t *testing.T) {
 	router, _, _ := newTestRouter(t)
 
 	all := append(append([]fixtureCase{}, f.Cases...), f.GatewayCases...)
-	if len(f.Cases) != 41 || len(f.GatewayCases) != 13 || len(all) != 54 {
-		t.Fatalf("expected 54 fixture cases (41 calling-service + 13 gateway), found %d (%d + %d) — re-read meta before re-copying",
+	if len(f.Cases) != 51 || len(f.GatewayCases) != 14 || len(all) != 65 {
+		t.Fatalf("expected 65 fixture cases (51 calling-service + 14 gateway), found %d (%d + %d) — re-read meta before re-copying",
 			len(all), len(f.Cases), len(f.GatewayCases))
 	}
 
@@ -338,26 +351,30 @@ func TestCenterProducesEveryFixtureResponse(t *testing.T) {
 				assertBodyEquals(t, rec.Body.String(), string(wantJSON))
 			})
 
-		case classDuplicateKey:
-			// UNPRODUCIBLE BY CONSTRUCTION. Version 5 `center-returns-duplicate-key`
-			// and `gateway-center-returns-duplicate-key` carry a 200 body naming
-			// `sub` twice. The center marshals a struct, so it can never write a
-			// repeated key; the cases pin how a CLIENT reads a body it cannot
-			// trust. Not skipped: for a token carrying the FIRST `sub` the
-			// center's real answer must equal the fixture body with the duplicate
-			// removed, i.e. the center produces the well-formed twin.
+		case classAmbiguousKeys:
+			// UNPRODUCIBLE BY CONSTRUCTION. Version 5's two duplicate-key cases
+			// name `sub` twice; version 6's name a key twice ignoring case
+			// (`active`/`Active`, `kind`/`Kind`) or spell a contract key
+			// another way (`Scope`). The center marshals a struct, so it can
+			// never write any of these; the cases pin how a CLIENT reads a
+			// body it cannot trust. Not skipped: for a token carrying the
+			// twin's claims the center's real answer must equal the twin — the
+			// fixture body with later case-insensitive repeats dropped and a
+			// miscased contract key respelled.
 			t.Run(c.Name+"/center-produces-the-well-formed-twin", func(t *testing.T) {
-				dup, _ := duplicateTopLevelKey(c.Center.Body)
-				if dup != "sub" {
-					t.Fatalf("fixture repeats %q; this test only understands a repeated `sub`: %s", dup, c.Center.Body)
+				twin := unambiguousTwin(t, c.Center.Body)
+				if twin == c.Center.Body {
+					t.Fatalf("the twin equals the fixture body, so the case is not ambiguous after all: %s", twin)
 				}
-				twin := withoutDuplicateKeys(t, c.Center.Body)
+				if _, still := ambiguousTopLevelKey(twin); still {
+					t.Fatalf("the twin is still ambiguous: %s", twin)
+				}
 				var first centerBody
 				if err := json.Unmarshal([]byte(twin), &first); err != nil {
 					t.Fatal(err)
 				}
-				if first.Sub == want.Sub {
-					t.Fatalf("the duplicated `sub` values are equal (%q); the case would not distinguish first from last", first.Sub)
+				if !first.Active || first.Sub == "" {
+					t.Fatalf("the twin is not an active answer the center could give: %s", twin)
 				}
 				token := signTestToken(testPrivateKey, testTokenOptions{
 					sub:           first.Sub,
@@ -444,11 +461,11 @@ func TestCenterProducesEveryFixtureResponse(t *testing.T) {
 	// the run fails rather than checking less than it did yesterday.
 	for class, want := range map[centerClass]int{
 		classNotApplicable:    21, // the center is never called (incl. 4 multi-line Authorization cases)
-		classActive:           16,
-		classActiveNoScopeKey: 3, // client-only: the center always sends `scope`
+		classActive:           24, // incl. version 6's eight scope-separator cases: the center returns the scope verbatim
+		classActiveNoScopeKey: 3,  // client-only: the center always sends `scope`
 		classInactive:         4,
 		classCallerSecret:     2,
-		classDuplicateKey:     2, // unproducible: the center marshals a struct (one calling-service, one gateway)
+		classAmbiguousKeys:    5, // unproducible: the center marshals a struct (v5: one calling-service, one gateway; v6: two and one)
 		classClientOnly:       6, // transport failures, a 500, an HTML body
 	} {
 		if counts[class] != want {
@@ -508,6 +525,8 @@ func TestVendoredFixtureIsTheExactCopyItClaimsToBe(t *testing.T) {
 			"active-machine-kind",
 			"active-with-irregular-scope-whitespace",
 			"active-with-multi-value-scope",
+			"active-with-non-separators-in-scope",
+			"active-with-only-spaces-in-scope",
 			"active-with-required-scope",
 			"active-with-scope-differing-only-in-case",
 			"active-with-scope-that-is-a-prefix-of-required",
@@ -516,6 +535,8 @@ func TestVendoredFixtureIsTheExactCopyItClaimsToBe(t *testing.T) {
 			"bearer-with-internal-whitespace",
 			"center-rejects-our-caller-secret",
 			"center-returns-500",
+			"center-returns-case-variant-duplicate-key",
+			"center-returns-contract-key-in-another-case",
 			"center-returns-duplicate-key",
 			"center-returns-malformed-json",
 			"center-times-out",
@@ -525,6 +546,7 @@ func TestVendoredFixtureIsTheExactCopyItClaimsToBe(t *testing.T) {
 			"gateway-active-operator-lacking-scope-key",
 			"gateway-bearer-with-empty-token",
 			"gateway-center-rejects-our-caller-secret",
+			"gateway-center-returns-case-variant-duplicate-key",
 			"gateway-center-returns-duplicate-key",
 			"gateway-center-unreachable",
 			"gateway-inactive-token",
@@ -549,6 +571,12 @@ func TestVendoredFixtureIsTheExactCopyItClaimsToBe(t *testing.T) {
 			"operator-on-public-get",
 			"options-on-guarded-route-with-no-header",
 			"options-with-no-declared-scope",
+			"scope-joined-by-em-space",
+			"scope-joined-by-form-feed",
+			"scope-joined-by-no-break-space",
+			"scope-joined-by-several-spaces",
+			"scope-joined-by-tab",
+			"scope-joined-by-vertical-tab",
 			"scoped-route-with-token-lacking-scope-key",
 			"session-route-with-inactive-token",
 			"session-route-with-no-header",

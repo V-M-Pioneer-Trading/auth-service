@@ -69,7 +69,7 @@ prints one.
 
 | File | What it pins |
 | --- | --- |
-| `tests/introspect-fixture.test.ts` | the SHA-256 pin of `src/api/testdata/introspection.json`, then **every** one of its 54 cases driven through the container, with the classification totals asserted |
+| `tests/introspect-fixture.test.ts` | the SHA-256 pin of `src/api/testdata/introspection.json`, then **every** one of its 65 cases driven through the container, with the classification totals asserted |
 | `tests/introspect.test.ts` | caller-secret gate, where the token travels, the 8 KiB cap, what verifies and what is `{"active":false}`, `CLERK_ISSUER` |
 | `tests/vault.test.ts` | `GET /auth/v1/token`, both status routes, health routes, the Clerk session gate, Restore Token |
 | `tests/register.test.ts` | Reset Agent: what is sent to SpaceTraders, what is stored, how upstream failures map |
@@ -236,9 +236,10 @@ each one is a place a "cleaner" implementation fails the contract.
     The scheme is matched case-insensitively and the header is split on **any
     run of whitespace**: `Bearer   t` and `Bearer<TAB>t` work; `Bearer a b`,
     `Bearer`, `Basic …` and a bare token are "a bearer token is required".
-    The scope is an exact whole-word match of `agent:reset` against the
-    whitespace-split scope (string or array); `agent:resetx` and `AGENT:RESET`
-    are 403.
+    The scope is an exact whole-word match of `agent:reset` against the scope
+    (string or array) split on runs of space, tab, CR and LF only (fixture v6):
+    VT, FF, a no-break space or any other Unicode space is part of a scope.
+    `agent:resetx` and `AGENT:RESET` are 403.
 22. **The body is decoded like Go's `encoding/json`**: key case is ignored
     (`{"AGENTTOKEN":…}` works), unknown keys are ignored, a repeated key's last
     value wins, **data after the first JSON value is ignored**, and a body of

@@ -100,6 +100,53 @@ func TestScopeGatedMutationsRejectWithoutAValidSession(t *testing.T) {
 	}
 }
 
+// TestScopeGateSplitsOnSpaceTabCRLFOnly pins the scope split of the two
+// agent:reset routes to the one every introspection client performs (meta
+// fixture version 6): runs of space, tab, CR and LF separate scopes, and every
+// other character is part of a scope. strings.Fields, used before, split on
+// every Unicode space, so a token whose scope joined agent:reset to another
+// scope by U+00A0 passed here while every client would answer 403.
+func TestScopeGateSplitsOnSpaceTabCRLFOnly(t *testing.T) {
+	router, _, _ := newTestRouter(t)
+	bearer := func(scope string) string {
+		return "Bearer " + signTestToken(testPrivateKey, testTokenOptions{scopeRaw: scope})
+	}
+	cases := []struct {
+		name  string
+		scope string
+		want  int
+	}{
+		// 403 is what the gate answers when the scope is missing; the
+		// route's own body check answers anything else, which is the
+		// assertion that the gate let the request through.
+		{"joined by a space", "fleet:control agent:reset", 0},
+		{"joined by a tab", "fleet:control\tagent:reset", 0},
+		{"joined by CR LF", "fleet:control\r\nagent:reset", 0},
+		{"leading, repeated and trailing spaces", "  fleet:control   agent:reset  ", 0},
+		{"joined by VT", "fleet:control\vagent:reset", http.StatusForbidden},
+		{"joined by FF", "fleet:control\fagent:reset", http.StatusForbidden},
+		{"joined by NEXT LINE", "fleet:control\u0085agent:reset", http.StatusForbidden},
+		{"joined by a no-break space", "fleet:control\u00a0agent:reset", http.StatusForbidden},
+		{"joined by an em space", "fleet:control\u2003agent:reset", http.StatusForbidden},
+		{"joined by an ideographic space", "fleet:control\u3000agent:reset", http.StatusForbidden},
+		{"agent:reset followed by a no-break space", "agent:reset\u00a0", http.StatusForbidden},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			rec := doRequest(t, router, http.MethodPost, "/api/auth/v1/agent-token", bearer(c.scope), `{}`)
+			if c.want == http.StatusForbidden {
+				if rec.Code != http.StatusForbidden {
+					t.Errorf("got %d, want 403 (body: %s)", rec.Code, rec.Body.String())
+				}
+				return
+			}
+			if rec.Code == http.StatusForbidden || rec.Code == http.StatusUnauthorized {
+				t.Errorf("got %d, want the gate to let the request through (body: %s)", rec.Code, rec.Body.String())
+			}
+		})
+	}
+}
+
 // GET /auth/v1/status is deliberately public — decision 6/8's whole point is
 // that anonymous visitors see the lifecycle banners too, and it never
 // returns a token in any state.

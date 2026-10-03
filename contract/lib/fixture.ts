@@ -100,22 +100,39 @@ export function topLevelMembers(body: string): Array<[string, string]> {
   return out;
 }
 
-export function firstOccurrenceTwin(body: string): Record<string, unknown> {
+const CONTRACT_KEYS = new Set(["active", "sub", "scope", "exp", "kind"]);
+
+/**
+ * The well-formed twin of a body a client must refuse: the FIRST occurrence of
+ * each key ignoring case is kept and later ones dropped, and a miscased
+ * contract key is respelled (fixture versions 5 and 6). It is what the center
+ * answers for the same token.
+ */
+export function unambiguousTwin(body: string): Record<string, unknown> {
   const seen = new Set<string>();
   const doc: Record<string, unknown> = {};
   for (const [k, raw] of topLevelMembers(body)) {
-    if (seen.has(k)) continue;
-    seen.add(k);
-    doc[k] = JSON.parse(raw);
+    const folded = k.toLowerCase();
+    if (seen.has(folded)) continue;
+    seen.add(folded);
+    doc[CONTRACT_KEYS.has(folded) ? folded : k] = JSON.parse(raw);
   }
   return doc;
 }
 
-export function hasDuplicateKey(body: string): string | undefined {
+/**
+ * The first top-level key a client must refuse the body over: one equal to an
+ * earlier key ignoring case (an exact repeat included, version 5; a case
+ * variant, version 6), or a contract key spelled any way but its own
+ * (version 6). JSON.parse would keep both or the last, so the raw members are
+ * scanned.
+ */
+export function ambiguousKey(body: string): string | undefined {
   const seen = new Set<string>();
   for (const [k] of topLevelMembers(body)) {
-    if (seen.has(k)) return k;
-    seen.add(k);
+    const folded = k.toLowerCase();
+    if (seen.has(folded) || (CONTRACT_KEYS.has(folded) && k !== folded)) return k;
+    seen.add(folded);
   }
   return undefined;
 }
