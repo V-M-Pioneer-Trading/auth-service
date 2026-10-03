@@ -45,7 +45,7 @@ describe("refresh at half the lifetime", () => {
     assert.equal(lab.clerk.mintCalls().length, 1);
 
     // Past the refresh point (about 5 s in). The slow refresh must not hold the caller up.
-    await waitFor("the refresh point", () => nowSeconds() >= jwtIat(first.token) + 30, 15_000, 200);
+    await waitFor("the refresh point", () => nowSeconds() >= jwtIat(first.token) + 31, 15_000, 200);
     await sleep(300);
     const t1 = Date.now();
     const during = (await a.m2m(lab.secrets.callerAi)).json() as Minted;
@@ -65,10 +65,18 @@ describe("refresh at half the lifetime", () => {
 
     // The next refresh point comes 5 s later (iat is backdated again). That refresh fails (call 3):
     // the caller still gets the cached, unexpired token, and the failure opens the backoff window.
-    await waitFor("the second refresh point", () => nowSeconds() >= jwtIat(second.token) + 30, 15_000, 200);
-    await sleep(300);
-    assert.equal(((await a.m2m(lab.secrets.callerAi)).json() as Minted).token, second.token);
-    await waitFor("the failing refresh", () => lab.clerk.mintCalls().length === 3);
+    // Keep asking until the refresh has been attempted: the service's clock may sit a moment behind ours,
+    // and every answer on the way must still be the cached token.
+    await waitFor("the second refresh point", () => nowSeconds() >= jwtIat(second.token) + 31, 15_000, 200);
+    await waitFor(
+      "the failing refresh",
+      async () => {
+        assert.equal(((await a.m2m(lab.secrets.callerAi)).json() as Minted).token, second.token);
+        return lab.clerk.mintCalls().length === 3;
+      },
+      10_000,
+      250,
+    );
     await sleep(300);
     assert.equal(((await a.m2m(lab.secrets.callerAi)).json() as Minted).token, second.token, "a failed refresh never costs the caller its valid token");
     assert.equal(lab.clerk.mintCalls().length, 3, "and the failure opened the backoff window");

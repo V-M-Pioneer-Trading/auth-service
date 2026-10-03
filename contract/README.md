@@ -78,8 +78,16 @@ prints one.
 | `tests/m2m-clerk.test.ts` | same route against the Clerk stub: what is asked of Clerk, single flight, every reason a minted token is refused |
 | `tests/m2m-clerk-backoff.test.ts` | the 10 s backoff and the 10 s mint timeout |
 | `tests/m2m-clerk-refresh.test.ts` | refresh at half the token's lifetime, using a short-lived stub token |
+| `tests/m2m-clerk-expiry.test.ts` | an expired cached token is never served, even while Clerk is down |
 | `tests/routing.test.ts` | the whole 404/405/301 table, HEAD, OPTIONS, CORS, path cleaning |
 | `tests/startup.test.ts` | configuration the service refuses to start with, key formats, log hygiene |
+
+## Test titles tagged `[go-text]`
+
+A title ending in `[go-text]` pins wording that comes from Go's own standard
+library (`404 page not found`, the `encoding/json` decode messages, the bytes of
+`http.Error`) rather than from this service. They are the first place to look
+when a port differs only in text.
 
 ## Not covered
 
@@ -137,9 +145,10 @@ each one is a place a "cleaner" implementation fails the contract.
    every introspection answer (active and inactive, and the 401), every
    M2M answer (token, 401, 503), and every `{"error":{"message":…}}` envelope
    (`GET /auth/v1/token`'s 403, the session gate's 401 and 403). It is **not**
-   on: the successful `GET /auth/v1/token` (which carries the credential),
-   status, health, register and restore answers, the plain-text errors, or
-   anything the router wrote. The suite asserts the absence too.
+   on: status, health, register and restore answers, the plain-text errors, or
+   anything the router wrote; the suite asserts the absence. The successful
+   `GET /auth/v1/token` (which carries the credential) has none today, and the
+   suite accepts either no `Cache-Control` or `no-store` there, so a port may add it.
 10. **CORS** is one fixed `Access-Control-Allow-Origin` from
     `CORS_ALLOWED_ORIGIN` (an empty value is unset, default
     `http://localhost:3000`), never reflected from the request. Methods are
@@ -191,12 +200,23 @@ each one is a place a "cleaner" implementation fails the contract.
     non-empty string. `iat`, `aud`, `azp`, `typ`, `kid` are not checked.
     `CLERK_ISSUER`, when non-empty, must equal `iss` exactly; unset means `iss`
     is not checked.
-18. **Everything unverifiable is `200 {"active":false}`**: no explanation, never
+18. **A duplicated secret header: the first wins.** Two `X-Introspection-Secret`
+    headers are read as the first one. Node joins unknown duplicate headers with
+    `, `, which would never match: a port must take the first value.
+    **Foreign key material in the header is ignored.** A token signed by an
+    untrusted key is inactive whatever its `jwk`, `jku` or `x5u` header says; the
+    only key is `CLERK_JWT_KEY`. **`crit` is deliberately not pinned:** Go accepts a
+    token with an unknown `crit` header, `jose` rejects it, and the port will
+    reject. That is an intentional, unpinned difference.
+18a. **Everything unverifiable is `200 {"active":false}`**: no explanation, never
     4xx/5xx. That includes an empty or missing token, a token in the query
     string (ignored), a JSON body, a body without a form content type, and a
     body over the cap.
 19. **Form parsing.** Only `application/x-www-form-urlencoded` (a charset
-    parameter is fine) is read. The first `token` value counts. **A malformed
+    parameter is fine) is read. The first `token` value counts. **The URL query
+    is parsed too, only to be ignored: a malformed escape (`?%zz`) or a
+    semicolon (`?a=1;b=2`) in the query, or a semicolon anywhere in the body,
+    makes the whole request `{"active":false}` even with a valid body token.** **A malformed
     percent-escape anywhere in the body makes the whole request inactive, even
     when a valid token came first.** The cap is 8192 bytes of body: 8192 is
     accepted, 8193 is `{"active":false}` (not 413), however valid the token. The
@@ -309,7 +329,9 @@ each one is a place a "cleaner" implementation fails the contract.
 
 ### Startup validation
 
-37. **Refuses (non-zero exit, message names variables, never values):** no
+37. **Refuses (non-zero exit; where the message names a setting it is the
+    variable, and it never prints a value, so the suite asserts on variable names
+    only and the Go wording is not pinned):** no
     `CLERK_JWT_KEY`/`CLERK_JWT_KEY_FILE` (inline wins; an empty file is an
     error; a private key is not a public key); no `AUTH_SERVICE_SHARED_SECRET`;
     `AUTH_INTROSPECTION_SECRET` equal to the shared secret; an M2M caller secret
@@ -317,7 +339,10 @@ each one is a place a "cleaner" implementation fails the contract.
     other caller's; two callers with the same machine key; a dev key **and** a
     machine key; an enabled caller with neither; a caller secret with leading or
     trailing whitespace (or only whitespace); a dev key file that is missing,
-    empty, or not an RSA private key.
+    empty, or not an RSA private key; a `CLERK_API_BASE_URL` that is not an
+    http(s) URL with a host and without credentials, query or fragment (the error
+    never repeats the value). When `CLERK_API_BASE_URL` is set the service logs
+    `scheme://host` only. Production never sets it.
 38. **Boots in a fail-closed state:** no `AUTH_INTROSPECTION_SECRET` (the route is
     mounted and rejects everyone), no M2M caller secrets (the route rejects
     everyone), a machine key with no caller secret (that caller is disabled).

@@ -81,7 +81,7 @@ const SERVED: Array<{ path: string; serves: string[]; otherwise: 404 | 405 }> = 
 
 describe("methods and paths that are not served", () => {
   for (const { path, serves, otherwise } of SERVED) {
-    it(`${path}: ${serves.length ? `serves ${serves.join("/")}, ` : ""}everything else is ${otherwise}`, async () => {
+    it(`${path}: ${serves.length ? `serves ${serves.join("/")}, ` : ""}everything else is ${otherwise}${otherwise === 404 ? " [go-text]" : ""}`, async () => {
       for (const method of NOT_OPTIONS.filter((m) => !serves.includes(m))) {
         const r = await send(api.port, {
           method,

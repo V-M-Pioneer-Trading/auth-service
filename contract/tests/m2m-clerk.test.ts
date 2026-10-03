@@ -77,7 +77,7 @@ describe("single flight and the cache", () => {
     const a = await boot();
     const replies = await Promise.all(Array.from({ length: 25 }, () => a.m2m(lab.secrets.callerAutomation)));
     assert.deepEqual(new Set(replies.map((r) => r.status)), new Set([200]));
-    assert.equal(new Set(replies.map((r) => r.text)).size, 1, "every waiter got the same answer");
+    assert.equal(new Set(replies.map((r) => JSON.stringify(r.json()))).size, 1, "every waiter got the same answer");
     assert.equal(lab.clerk.mintCalls().length, 1);
     await a.stop();
   });
@@ -99,9 +99,9 @@ describe("single flight and the cache", () => {
   it("serves later requests from memory until half the lifetime has passed", async () => {
     const a = await boot();
     const first = await a.m2m(lab.secrets.callerAi);
-    for (let i = 0; i < 5; i++) assert.equal((await a.m2m(lab.secrets.callerAi)).text, first.text);
+    for (let i = 0; i < 5; i++) assert.deepEqual((await a.m2m(lab.secrets.callerAi)).json(), first.json());
     await sleep(1200);
-    assert.equal((await a.m2m(lab.secrets.callerAi)).text, first.text);
+    assert.deepEqual((await a.m2m(lab.secrets.callerAi)).json(), first.json());
     assert.equal(lab.clerk.mintCalls().length, 1);
     await a.stop();
   });

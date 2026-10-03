@@ -39,4 +39,4 @@ jobs:
         working-directory: contract
         env:
           CONTRACT_IMAGE: auth-service:contract
-        run: node --test
+        run: node --test --test-timeout=120000

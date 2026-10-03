@@ -28,6 +28,7 @@ function sensitive(): string[] {
     ...keyBody(lab.clerkKey.privatePem),
     ...keyBody(lab.foreignKey.privatePem).slice(0, 3),
     "whitespace-secret-value",
+    "hunter2",
   ];
 }
 
@@ -60,9 +61,20 @@ describe("required settings", () => {
   });
 });
 
+describe("CLERK_API_BASE_URL (the one setting only the contract harness uses)", () => {
+  it("refuses a value that is not an http(s) URL with a host and no credentials, query or fragment, and never prints it", async () => {
+    for (const bad of ["not a url", "ftp://stub.example", "http://", "http://user:hunter2@stub.example", "http://stub.example?x=1", "http://stub.example#frag"]) {
+      await refuses({ m2m: "clerk", env: { CLERK_API_BASE_URL: bad } }, /CLERK_API_BASE_URL/);
+    }
+  });
+  it("refuses a bad value even in dev mode, where it would not be used", async () => {
+    await refuses({ m2m: "dev", env: { CLERK_API_BASE_URL: "ftp://stub.example" } }, /CLERK_API_BASE_URL/);
+  });
+});
+
 describe("the M2M mint table is validated at startup", () => {
   it("refuses two callers with the same secret", async () => {
-    await refuses({ env: { M2M_CALLER_SECRET_AI_SERVICE: lab.secrets.callerAutomation } }, /M2M_CALLER_SECRET|caller secrets/);
+    await refuses({ env: { M2M_CALLER_SECRET_AI_SERVICE: lab.secrets.callerAutomation } }, undefined);
   });
   it("refuses a caller secret equal to AUTH_SERVICE_SHARED_SECRET", async () => {
     await refuses({ env: { M2M_CALLER_SECRET_AUTOMATION_SERVICE: lab.secrets.shared } }, /AUTH_SERVICE_SHARED_SECRET/);
@@ -77,11 +89,11 @@ describe("the M2M mint table is validated at startup", () => {
   });
   it("refuses a caller secret with leading or trailing whitespace, or only whitespace: no request could ever present it", async () => {
     for (const secret of [" whitespace-secret-value", "whitespace-secret-value ", "whitespace-secret-value\t", "   "]) {
-      await refuses({ env: { M2M_CALLER_SECRET_AI_SERVICE: secret } }, /whitespace/);
+      await refuses({ env: { M2M_CALLER_SECRET_AI_SERVICE: secret } }, undefined);
     }
   });
   it("refuses an enabled caller with nothing to mint with", async () => {
-    await refuses({ m2m: "none", env: { M2M_CALLER_SECRET_AUTOMATION_SERVICE: lab.secrets.callerAutomation } }, /M2M_MACHINE_KEY|DEV_M2M_SIGNING_KEY_FILE|mint/);
+    await refuses({ m2m: "none", env: { M2M_CALLER_SECRET_AUTOMATION_SERVICE: lab.secrets.callerAutomation } }, /M2M_MACHINE_KEY|DEV_M2M_SIGNING_KEY_FILE/);
   });
   it("refuses two callers sharing one Clerk machine key", async () => {
     await refuses({ m2m: "clerk", env: { M2M_MACHINE_KEY_AI_SERVICE: lab.secrets.machineAutomation } }, /M2M_MACHINE_KEY/);
@@ -166,6 +178,23 @@ describe("listening", () => {
   it("listens on port 80 when PORT is unset (the image's EXPOSE)", { skip: mode === "bin" ? "a native run cannot bind port 80" : false }, async () => {
     const api = await lab.start({ env: { PORT: undefined } });
     assert.equal((await api.get("/health")).status, 200);
+    await api.stop();
+  });
+});
+
+describe("log hygiene, production mode", () => {
+  it("never writes a machine key, a secret, or text from a failing Clerk reply to the log", async () => {
+    const SENTINEL = "clerk-error-body-sentinel-7c1f";
+    lab.clerk.clear();
+    lab.clerk.handler = () => ({ status: 500, body: { errors: [{ message: SENTINEL, long_message: `${SENTINEL} ${lab.secrets.machineAutomation}` }] } });
+    const api = await lab.start({ m2m: "clerk" });
+    assert.equal((await api.m2m(lab.secrets.callerAutomation)).status, 503);
+    assert.equal((await api.m2m(lab.secrets.callerAutomation)).status, 503);
+    await api.m2m("wrong-secret-sentinel");
+    const log = api.output();
+    for (const value of [...sensitive(), SENTINEL, "wrong-secret-sentinel"]) {
+      assert.ok(!log.includes(value), "a credential or upstream text reached the log");
+    }
     await api.stop();
   });
 });

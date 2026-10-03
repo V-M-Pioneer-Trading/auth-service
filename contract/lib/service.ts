@@ -167,7 +167,6 @@ async function launch(spec: ServiceSpec): Promise<Service> {
     child.on("error", () => resolve(-1));
   });
   const unregister = registerCleanup(kill);
-  let stopped = false;
   void exited.then(() => {
     unregister();
     rmSync(fileDir, { recursive: true, force: true });
@@ -177,11 +176,16 @@ async function launch(spec: ServiceSpec): Promise<Service> {
     port: hostPort,
     output: () => output.join(""),
     stop: async () => {
-      if (!stopped) {
-        stopped = true;
+      // Keep killing until the process is really gone: stopping while `docker run` is still creating
+      // the container would otherwise remove nothing and leave the container to start after us.
+      let gone = false;
+      void exited.then(() => {
+        gone = true;
+      });
+      while (!gone) {
         kill();
+        await Promise.race([exited, sleep(500)]);
       }
-      await exited;
     },
     exited,
   };
@@ -189,6 +193,19 @@ async function launch(spec: ServiceSpec): Promise<Service> {
 
 /** Starts the service and waits until GET /health answers. Rejects, with its output, if it exits first. */
 export async function startService(spec: ServiceSpec, timeoutMs = 60_000): Promise<Service> {
+  // The free port is probed and then released before the service binds it, so another process can
+  // take it in between. That shows up as the service dying on a bind error: pick another and retry.
+  for (let attempt = 1; ; attempt++) {
+    try {
+      return await startOnce(spec, timeoutMs);
+    } catch (err) {
+      if (attempt < 3 && /address already in use|port is already allocated|Bind for .* failed/i.test(String(err))) continue;
+      throw err;
+    }
+  }
+}
+
+async function startOnce(spec: ServiceSpec, timeoutMs: number): Promise<Service> {
   const svc = await launch(spec);
   const deadline = Date.now() + timeoutMs;
   let exitedEarly: number | null | undefined;

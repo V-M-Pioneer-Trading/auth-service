@@ -19,11 +19,19 @@ export interface RequestOptions {
   /** Object, or a flat [name, value, name, value] array to send a header twice. */
   headers?: Record<string, string> | string[];
   body?: string | Buffer;
+  /** Send the body with Transfer-Encoding: chunked instead of a Content-Length. */
+  chunked?: boolean;
   timeoutMs?: number;
 }
 
 /** One request, one connection, no redirects followed, nothing retried. */
 export function send(port: number, opts: RequestOptions): Promise<Reply> {
+  // A body travels with a Content-Length unless the caller asks for chunked: that is what real callers send.
+  let headers = opts.headers;
+  if (opts.body !== undefined && !opts.chunked) {
+    const length = String(Buffer.byteLength(opts.body));
+    headers = Array.isArray(headers) ? [...headers, "content-length", length] : { ...headers, "content-length": length };
+  }
   return new Promise((resolve, reject) => {
     const req = nodeRequest(
       {
@@ -31,7 +39,7 @@ export function send(port: number, opts: RequestOptions): Promise<Reply> {
         port,
         method: opts.method ?? "GET",
         path: opts.path,
-        headers: opts.headers as never,
+        headers: headers as never,
         agent: false,
         timeout: opts.timeoutMs ?? 20_000,
       },

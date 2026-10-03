@@ -61,11 +61,12 @@ describe("GET /auth/v1/token", () => {
     expectText(r, 503, "no agent token configured\n"); // authenticated, then unconfigured
   });
 
-  it("returns the agent token, and only that, once registered. Today it carries NO Cache-Control", async () => {
+  it("returns the agent token, and only that, once registered; Cache-Control is absent today and no-store would also be accepted", async () => {
     assert.equal((await api.register(REGISTER)).status, 200);
     const r = await api.agentToken();
-    expectJson(r, 200, { agentToken: "agent-token-1" });
-    assert.equal(r.header("cache-control"), undefined);
+    const noStore = r.header("cache-control") === "no-store";
+    expectJson(r, 200, { agentToken: "agent-token-1" }, { noStore });
+    assert.ok(r.header("cache-control") === undefined || noStore, "Cache-Control, if present, must be no-store");
   });
 
   it("is 503 again if the stored agent token is empty", async () => {
@@ -74,7 +75,7 @@ describe("GET /auth/v1/token", () => {
     expectText(await api.agentToken(), 503, "no agent token configured\n");
   });
 
-  it("is not mounted under /api/auth (decision 9: no public route for the token, at any method)", async () => {
+  it("is not mounted under /api/auth (decision 9: no public route for the token, at any method) [go-text]", async () => {
     for (const method of ["GET", "POST"]) {
       expectText(await send(api.port, { method, path: "/api/auth/v1/token", headers: { "x-auth-service-secret": lab.secrets.shared } }), 404, "404 page not found\n", {
         cors: false,
@@ -258,7 +259,7 @@ describe("POST /api/auth/v1/agent-token (Restore Token)", () => {
     expectJson(await api.agentToken(), 200, { agentToken: "agent-token-1" });
   });
 
-  it("rejects a body that is not a JSON object of the right shape with 400", async () => {
+  it("rejects a body that is not a JSON object of the right shape with 400 [go-text]", async () => {
     assert.equal((await api.register(REGISTER)).status, 200);
     // The text after the prefix is the decoder's own message (Go's encoding/json): only the prefix is the contract.
     for (const body of ["", "{", "not json", "[]", '"a string"', "42", '{"agentToken": 5}', '{"agentToken": {"a":1}}', '{"agentToken": ["x"]}']) {

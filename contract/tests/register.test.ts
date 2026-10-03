@@ -32,7 +32,7 @@ describe("what it asks of the caller", () => {
     assert.equal(lab.st.calls.length, 0, "a rejected request must not reach SpaceTraders");
   });
 
-  it("rejects a malformed or wrongly typed body with 400 'invalid request body: …'", async () => {
+  it("rejects a malformed or wrongly typed body with 400 'invalid request body: …' [go-text]", async () => {
     for (const body of ["", "{", "[]", '{"accountToken": 1, "symbol": "A", "faction": "B"}', '{"symbol": ["A"]}', '{"email": 5, "accountToken":"t","symbol":"A","faction":"B"}']) {
       expectText(await api.register(body), 400, /^invalid request body: .+\n$/);
     }
@@ -139,7 +139,7 @@ describe("how upstream failures map to responses", () => {
     }
   });
 
-  it("answers 502 for an upstream 2xx whose body is not the expected JSON", async () => {
+  it("answers 502 for an upstream 2xx whose body is not the expected JSON [go-text]", async () => {
     for (const body of ["", "not json", "[", "<html></html>"]) {
       failing(200, body);
       const r = await api.register(BODY);

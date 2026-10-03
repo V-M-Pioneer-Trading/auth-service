@@ -39,8 +39,10 @@ describe("the caller table", () => {
   ];
   for (const { who, secret } of rows) {
     it(`${who.name} gets a token for ${who.scope}, signed by the dev key, naming mch_local_${who.name}`, async () => {
+      // A container of its own, so this is the first mint and iat can be bracketed.
+      const fresh = await lab.start({ m2m: "dev" });
       const before = Math.floor(Date.now() / 1000);
-      const { token, expires_at } = await mint(api, secret());
+      const { token, expires_at } = await mint(fresh, secret());
       const after = Math.floor(Date.now() / 1000);
 
       assert.deepEqual(jwtHeader(token), { alg: "RS256", kid: "dev-only-do-not-use", typ: "JWT" });
@@ -53,6 +55,7 @@ describe("the caller table", () => {
       assert.equal(expires_at, claims.exp);
       assert.ok(verifyRs256(token, lab.clerkKey.publicKey), "signed with the configured dev key");
       assert.ok(!verifyRs256(token, lab.foreignKey.publicKey));
+      await fresh.stop();
     });
 
     it(`${who.name}'s token introspects as an active machine with exactly its scope`, async () => {
@@ -125,8 +128,7 @@ describe("the secret gate", () => {
   });
 
   it("never names a caller, a secret or a reason in the rejection", async () => {
-    const r = await api.m2m("nope");
-    assert.equal(r.text, '{"error":"unknown caller"}\n');
+    expectJson(await api.m2m("nope"), 401, UNKNOWN, { noStore: true });
   });
 });
 

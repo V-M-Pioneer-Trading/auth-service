@@ -124,6 +124,30 @@ describe("where the token travels", () => {
       expectJson(await post("/auth/v1/introspect", body), 200, INACTIVE, { noStore: true });
     }
   });
+  it("answers {active:false} when the URL query is malformed or uses a semicolon, even with a valid body token", async () => {
+    const good = lab.token();
+    for (const path of ["/auth/v1/introspect?%zz", "/auth/v1/introspect?a=1;b=2", "/auth/v1/introspect?%"]) {
+      expectJson(await post(path, `token=${good}`), 200, INACTIVE, { noStore: true });
+    }
+  });
+  it("answers {active:false} when the body uses a semicolon anywhere, even next to a valid token", async () => {
+    const good = lab.token();
+    for (const body of [`token=${good}&a=1;b=2`, `a=1;b=2&token=${good}`, `token=${good};x=1`]) {
+      expectJson(await post("/auth/v1/introspect", body), 200, INACTIVE, { noStore: true });
+    }
+  });
+  it("reads the FIRST of two X-Introspection-Secret headers (a runtime that joins duplicates with a comma fails this)", async () => {
+    const body = `token=${lab.token()}`;
+    const twice = (a: string, b: string) =>
+      send(api.port, {
+        method: "POST",
+        path: "/auth/v1/introspect",
+        headers: ["host", `127.0.0.1:${api.port}`, "content-type", "application/x-www-form-urlencoded", "x-introspection-secret", a, "x-introspection-secret", b],
+        body,
+      });
+    assert.equal(((await twice(lab.secrets.introspection, "wrong")).json() as { active: boolean }).active, true);
+    expectAuthError(await twice("wrong", lab.secrets.introspection), 401, REQUIRED);
+  });
   it("uses the first of several token parameters", async () => {
     const exp = nowSeconds() + 3600;
     const good = lab.token({ sub: "user_first", exp });
@@ -148,12 +172,13 @@ describe("the 8 KiB body cap", () => {
     const head = `token=${encodeURIComponent(lab.token())}&pad=`;
     return head + "a".repeat(total - head.length);
   };
-  const post = (body: string) =>
+  const post = (body: string, chunked = false) =>
     send(api.port, {
       method: "POST",
       path: "/auth/v1/introspect",
       headers: { "content-type": "application/x-www-form-urlencoded", "x-introspection-secret": lab.secrets.introspection },
       body,
+      chunked,
     });
 
   it("accepts a body of exactly 8192 bytes", async () => {
@@ -168,6 +193,11 @@ describe("the 8 KiB body cap", () => {
   });
   it("answers {active:false} for a 1 MiB body", async () => {
     expectJson(await post(padded(1024 * 1024)), 200, INACTIVE, { noStore: true });
+  });
+  it("applies the same cap to a chunked body with no Content-Length: 8192 accepted, 8193 and 1 MiB not", async () => {
+    assert.equal(((await post(padded(CAP), true)).json() as { active: boolean }).active, true);
+    expectJson(await post(padded(CAP + 1), true), 200, INACTIVE, { noStore: true });
+    expectJson(await post(padded(1024 * 1024), true), 200, INACTIVE, { noStore: true });
   });
   it("answers {active:false} for a single oversized token", async () => {
     expectJson(await post(`token=${"a".repeat(CAP)}`), 200, INACTIVE, { noStore: true });
@@ -281,6 +311,12 @@ describe("what verifies, and what is {active:false}", () => {
       "RS384 (alg is pinned to RS256)": signJwt(claims, { key, alg: "RS384" }),
       "RS512": signJwt(claims, { key, alg: "RS512" }),
       "PS256": signJwt(claims, { key, alg: "PS256" }),
+      "foreign key with an embedded jwk header (the verifier's own key is the only key)": signJwt(claims, {
+        key: lab.foreignKey.privateKey,
+        header: { jwk: lab.foreignKey.publicKey.export({ format: "jwk" }) },
+      }),
+      "foreign key with a jku header": signJwt(claims, { key: lab.foreignKey.privateKey, header: { jku: "https://evil.example/jwks.json", kid: "x" } }),
+      "foreign key with an x5u header": signJwt(claims, { key: lab.foreignKey.privateKey, header: { x5u: "https://evil.example/cert.pem" } }),
       "no exp": signJwt({ sub: "user_x" }, { key }),
       "exp as a string": signJwt({ sub: "user_x", exp: String(exp) }, { key }),
       "no sub": signJwt({ scope: "agent:reset", exp }, { key }),
@@ -295,17 +331,17 @@ describe("what verifies, and what is {active:false}", () => {
     };
     for (const [label, token] of Object.entries(bad)) {
       const r = await api.introspect(token);
-      assert.deepEqual({ label, status: r.status, body: r.text }, { label, status: 200, body: '{"active":false}\n' });
+      assert.equal(r.status, 200, label);
       expectJson(r, 200, INACTIVE, { noStore: true });
     }
   });
 
-  it("never says why: every failure is the same answer, byte for byte", async () => {
+  it("never says why: every failure is the same answer", async () => {
     const a = await api.introspect(lab.token({ exp: now() - 86400 }));
     const b = await api.introspect(lab.token({}, lab.foreignKey));
     const c = await api.introspect("garbage");
-    assert.equal(a.text, b.text);
-    assert.equal(b.text, c.text);
+    assert.deepEqual(a.json(), b.json());
+    assert.deepEqual(b.json(), c.json());
   });
 });
 

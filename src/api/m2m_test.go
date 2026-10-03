@@ -1326,10 +1326,42 @@ func TestClerkURLFromEnv(t *testing.T) {
 		"http://stub:1234/":        "http://stub:1234/v1/m2m_tokens",
 		"https://api.clerk.com":    clerkM2MTokensURL,
 		"https://api.clerk.com///": clerkM2MTokensURL,
+		"https://proxy.test/clerk": "https://proxy.test/clerk/v1/m2m_tokens",
 	} {
-		if got := clerkURLFromEnv(base); got != want {
-			t.Errorf("clerkURLFromEnv(%q) = %q, want %q", base, got, want)
+		got, err := clerkURLFromEnv(base)
+		if err != nil || got != want {
+			t.Errorf("clerkURLFromEnv(%q) = %q, %v, want %q", base, got, err, want)
 		}
+	}
+}
+
+func TestClerkURLFromEnvRefusesUnsafeValues(t *testing.T) {
+	for _, base := range []string{
+		"not a url", "stub:1234", "//stub", "ftp://stub", "file:///etc/passwd", "http://", "https:///v1",
+		"http://user:hunter2@stub", "http://user@stub", "http://stub?x=1", "http://stub?", "http://stub#frag", "http://stub/#",
+	} {
+		got, err := clerkURLFromEnv(base)
+		if err == nil {
+			t.Errorf("clerkURLFromEnv(%q) = %q, want an error", base, got)
+			continue
+		}
+		if strings.Contains(err.Error(), "hunter2") || strings.Contains(err.Error(), base) {
+			t.Errorf("the error repeats the value: %v", err)
+		}
+		if !strings.Contains(err.Error(), "CLERK_API_BASE_URL") {
+			t.Errorf("the error does not name the variable: %v", err)
+		}
+	}
+}
+
+func TestReadM2MConfigRefusesABadClerkBaseURL(t *testing.T) {
+	for _, k := range []string{"M2M_CALLER_SECRET_AUTOMATION_SERVICE", "M2M_CALLER_SECRET_AI_SERVICE",
+		"M2M_MACHINE_KEY_AUTOMATION_SERVICE", "M2M_MACHINE_KEY_AI_SERVICE", "DEV_M2M_SIGNING_KEY_FILE"} {
+		t.Setenv(k, "")
+	}
+	t.Setenv("CLERK_API_BASE_URL", "http://user:hunter2@stub")
+	if _, err := ReadM2MConfig("vault", ""); err == nil {
+		t.Fatal("expected a startup error")
 	}
 }
 
