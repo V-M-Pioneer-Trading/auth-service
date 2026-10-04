@@ -1,0 +1,29 @@
+package main
+
+import (
+	"log"
+	"time"
+
+	"vnm/auth-service/db"
+)
+
+func main() {
+	conn := db.SetUpDatabase()
+	now := time.Date(2026, 10, 1, 12, 0, 0, 0, time.UTC)
+	reset := time.Date(2026, 9, 28, 14, 0, 0, 0, time.FixedZone("", 2*3600))
+	next := time.Date(2026, 10, 12, 3, 4, 5, 0, time.UTC)
+	c := db.Credential{AccountToken: "go-written-account-token", AgentToken: "go-written-agent-token", AgentSymbol: "GO_WRITTEN", Faction: "COSMIC", Email: "go@example.test", ResetDate: reset, NextPredictedReset: next}
+	if err := db.UpsertCredential(conn, c, now); err != nil {
+		log.Fatal(err)
+	}
+	if err := db.AppendHistory(conn, now, "registered", "written by the Go image's db package"); err != nil {
+		log.Fatal(err)
+	}
+	if err := db.AppendHistory(conn, now.Add(time.Hour), "token_restored", ""); err != nil {
+		log.Fatal(err)
+	}
+	if err := db.SetTokenExpired(conn, true, now.Add(2*time.Hour)); err != nil {
+		log.Fatal(err)
+	}
+	conn.Close()
+}

@@ -1,0 +1,20 @@
+go-written.db
+  A SQLite file written by the Go service's own `db` package (src/db at the commit this was made from, modernc.org/sqlite
+  v1.34.4, Go 1.22.4), by the program in go-writer.go.txt: SetUpDatabase, UpsertCredential (symbol GO_WRITTEN; the reset
+  date with a +02:00 offset, the predicted reset in UTC), two AppendHistory rows, SetTokenExpired(true). Every value is an
+  obvious placeholder, no credential. `db.test.ts` checks the sha256 below, opens it with node:sqlite, reads the row,
+  and compares its DDL with the one this service applies: the schema does not change in the port, so a rollback to the
+  Go image opens the same file.
+  sha256 9ca9d183c8fb4b74f36c97eb711705360de01da6c82f4fc12a6d2e036e52f806
+
+  To remake it (Go on the PATH; from a scratch module that replaces vnm/auth-service with the repository's src/):
+    SQLITE_DB_PATH=out.db GOFLAGS=-mod=mod go run .
+
+go-verdicts.json
+  What the Go service's parsing functions answer on a corpus, recorded by running them (go 1.22.4):
+  url      clerkURLFromEnv (src/api/m2m.go): "refused", or "ok scheme://host -> mint endpoint"
+  times    parseTime (src/db/credential.go): time.Parse(time.RFC3339, s).Format(time.RFC3339) and the Unix milliseconds, or "zero"
+  spaces   every code point (up to U+3100 and a few above) that strings.TrimSpace strips
+  keys     golang-jwt v5.3.1 ParseRSAPublicKeyFromPEM / ParseRSAPrivateKeyFromPEM, by the case names of
+           src/testSupport/keyCases.ts (the keys are generated per run, so no private key is committed)
+  The tests in goUrl.test.ts, goTime.test.ts, goText.test.ts and keys.test.ts hold the TypeScript readers to them.

@@ -1,0 +1,27 @@
+{
+  // Development, typechecking and tests. The shipped build is
+  // tsconfig.build.json, which narrows this to the non-test sources.
+  "compilerOptions": {
+    "target": "ES2022",
+    "lib": ["ES2023"],
+    "module": "commonjs",
+    "moduleResolution": "node",
+    "esModuleInterop": true,
+    // The strict set clerk-client builds with (ts-introspection-client/tsconfig.json).
+    "strict": true,
+    "noUncheckedIndexedAccess": true,
+    "noImplicitOverride": true,
+    "exactOptionalPropertyTypes": true,
+    "noFallthroughCasesInSwitch": true,
+    "forceConsistentCasingInFileNames": true,
+    "skipLibCheck": true,
+    "resolveJsonModule": true,
+    // tsoa reads its controllers through decorators.
+    "experimentalDecorators": true,
+    "emitDecoratorMetadata": true,
+    "outDir": "./dist",
+    "rootDir": "./src",
+    "types": ["node", "jest"]
+  },
+  "include": ["src/**/*.ts"]
+}

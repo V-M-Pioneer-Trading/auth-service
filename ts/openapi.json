@@ -1,0 +1,165 @@
+{
+  "openapi": "3.0.0",
+  "components": {
+    "examples": {},
+    "headers": {},
+    "parameters": {},
+    "requestBodies": {},
+    "responses": {},
+    "schemas": {
+      "State": {
+        "type": "string",
+        "enum": [
+          "UNCONFIGURED",
+          "HEALTHY",
+          "WIPE_IMMINENT",
+          "APP_TOKEN_EXPIRED"
+        ]
+      },
+      "StatusResponse": {
+        "description": "The wire format. Dates are RFC 3339 as Go formats it; a member with nothing to say is absent, not empty.",
+        "properties": {
+          "state": {
+            "$ref": "#/components/schemas/State"
+          },
+          "agentSymbol": {
+            "type": "string"
+          },
+          "resetDate": {
+            "type": "string"
+          },
+          "nextPredictedReset": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "state"
+        ],
+        "type": "object",
+        "additionalProperties": false
+      },
+      "HealthStatus": {
+        "properties": {
+          "status": {
+            "type": "string",
+            "enum": [
+              "ok"
+            ],
+            "nullable": false
+          }
+        },
+        "required": [
+          "status"
+        ],
+        "type": "object",
+        "additionalProperties": false
+      }
+    },
+    "securitySchemes": {}
+  },
+  "info": {
+    "title": "Auth Service API",
+    "version": "0.0.0",
+    "description": "The SpaceTraders game credential and the fleet's token verifier. Public routes only: the internal /auth/v1/* routes are documented as they are ported.",
+    "contact": {}
+  },
+  "paths": {
+    "/auth/v1/status": {
+      "get": {
+        "operationId": "Status",
+        "responses": {
+          "200": {
+            "description": "Ok",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/StatusResponse"
+                }
+              }
+            }
+          }
+        },
+        "description": "UNCONFIGURED, HEALTHY, WIPE_IMMINENT or APP_TOKEN_EXPIRED, with the agent symbol and the dates when known.",
+        "tags": [
+          "status"
+        ],
+        "security": [],
+        "parameters": []
+      }
+    },
+    "/api/auth/v1/status": {
+      "get": {
+        "operationId": "ApiStatus",
+        "responses": {
+          "200": {
+            "description": "Ok",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/StatusResponse"
+                }
+              }
+            }
+          }
+        },
+        "description": "The same answer on the production path prefix.",
+        "tags": [
+          "status"
+        ],
+        "security": [],
+        "parameters": []
+      }
+    },
+    "/health": {
+      "get": {
+        "operationId": "Health",
+        "responses": {
+          "200": {
+            "description": "Ok",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HealthStatus"
+                }
+              }
+            }
+          }
+        },
+        "description": "Liveness check.",
+        "tags": [
+          "operational"
+        ],
+        "security": [],
+        "parameters": []
+      }
+    },
+    "/api/auth/health": {
+      "get": {
+        "operationId": "ApiHealth",
+        "responses": {
+          "200": {
+            "description": "Ok",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HealthStatus"
+                }
+              }
+            }
+          }
+        },
+        "description": "Liveness check on the production path prefix.",
+        "tags": [
+          "operational"
+        ],
+        "security": [],
+        "parameters": []
+      }
+    }
+  },
+  "servers": [
+    {
+      "url": "/"
+    }
+  ]
+}

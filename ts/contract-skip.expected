@@ -1,0 +1,9 @@
+# See scripts/run-contract.cjs.
+# suite   = every test of ../contract, measured with nothing filtered (the Go image: 320)
+# skipped = cases covered by contract-skip.txt (routes not ported yet)
+# pass    = cases outside the list, all of which pass
+# dynamic-skips = t.skip() calls inside the suite itself (the introspection fixture's client-only cases)
+suite=320
+skipped=202
+pass=91
+dynamic-skips=27

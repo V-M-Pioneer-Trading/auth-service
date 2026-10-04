@@ -1,0 +1,99 @@
+name: ts
+
+# The TypeScript port of auth-service (meta#103, decision 23), in ts/ next to the Go code until the cutover
+# (auth-service#17). Nothing here deploys: container.yml still builds and deploys the Go image, and its required
+# jobs `test` and `contract` stay the Go ones. At the cutover these two jobs take those names.
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  ts-checks:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    defaults:
+      run:
+        working-directory: ts
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+          cache-dependency-path: ts/package-lock.json
+
+      # --ignore-scripts: no dependency's install script runs, here or in the image.
+      - run: npm ci --ignore-scripts
+
+      # Direct dependencies are exactly the allowlist, and package-lock.json holds exactly the packages of the
+      # committed transitive snapshot: a new package is a diff in dependency-snapshot.txt, never a silent arrival.
+      - name: Dependency gate (allowlist and transitive snapshot)
+        run: npm run check:deps
+
+      - name: Audit
+        run: npm audit --audit-level=high
+
+      # tsoa codegen, then tsc over sources and tests with the strict flag set.
+      - run: npm run typecheck
+
+      - name: Lint
+        run: npm run lint
+
+      - run: npm run build
+
+      # The committed openapi.json must match the controllers. Regenerates it (no server, DB or network) and fails on
+      # any difference.
+      - name: Check openapi.json is up to date
+        run: |
+          npm run openapi
+          # git status, not git diff: a deleted or never-committed file shows as untracked, which git diff would let through.
+          test -z "$(git status --porcelain -- openapi.json)" || { git diff -- openapi.json; echo "::error file=ts/openapi.json::openapi.json is out of date. Run 'npm run openapi' in ts/ and commit the result."; exit 1; }
+
+      - run: npm test
+
+  # The black-box HTTP contract suite (../contract) against the image ts/Dockerfile builds, judged by
+  # ts/scripts/run-contract.cjs: the whole suite runs unfiltered, a case off ts/contract-skip.txt must pass and a case
+  # on it must not, and the measured numbers must equal ts/contract-skip.expected. The list is every case of a route not
+  # ported yet; it shrinks with each port PR and is empty after 7d. contract/ is never edited to make this pass.
+  contract-ts:
+    # Nothing is installed or built from a lockfile the dependency gate has not passed.
+    needs: ts-checks
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+          cache-dependency-path: contract/package-lock.json
+
+      - name: Build the TypeScript image
+        run: docker build -t auth-service:contract-ts ts
+
+      # The image's own runtime: node:sqlite is a release candidate from Node 24.15, and the image runs as root (the
+      # existing /data/auth.db is root-owned).
+      - name: The image's Node is at least 24.15 and it runs as root
+        run: |
+          docker run --rm auth-service:contract-ts -e '
+            const [major, minor] = process.versions.node.split(".").map(Number);
+            console.log("node", process.versions.node, "uid", process.getuid());
+            if (major < 24 || (major === 24 && minor < 15)) { console.error("Node is below 24.15"); process.exit(1); }
+            if (process.getuid() !== 0) { console.error("not root"); process.exit(1); }
+          '
+
+      - name: Install the suite's dev dependencies
+        working-directory: contract
+        run: npm ci --ignore-scripts
+
+      - name: Run the contract suite against the image
+        working-directory: ts
+        env:
+          CONTRACT_IMAGE: auth-service:contract-ts
+        run: node scripts/run-contract.cjs
