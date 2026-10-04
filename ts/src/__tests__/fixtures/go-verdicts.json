@@ -1107,6 +1107,38 @@
    "public": "refused",
    "private": "ok"
   },
+  "spki-trailing-zero-byte": {
+   "public": "refused",
+   "private": "refused"
+  },
+  "pkcs1-public-trailing-zero-byte": {
+   "public": "refused",
+   "private": "refused"
+  },
+  "pkcs8-private-trailing-zero-byte": {
+   "public": "refused",
+   "private": "ok"
+  },
+  "pkcs1-private-trailing-zero-byte": {
+   "public": "refused",
+   "private": "refused"
+  },
+  "spki-trailing-garbage": {
+   "public": "refused",
+   "private": "refused"
+  },
+  "end-marker-on-the-body-line": {
+   "public": "refused",
+   "private": "refused"
+  },
+  "end-marker-indented": {
+   "public": "refused",
+   "private": "refused"
+  },
+  "wrong-end-label-then-the-right-one": {
+   "public": "refused",
+   "private": "refused"
+  },
   "literal-backslash-n-one-line": {
    "public": "refused",
    "private": "refused"

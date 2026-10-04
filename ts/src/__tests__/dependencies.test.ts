@@ -13,6 +13,7 @@ interface Entry {
   hasInstallScript?: boolean;
   os?: string[];
   cpu?: string[];
+  link?: boolean;
 }
 interface Pkg {
   dependencies: Record<string, string>;
@@ -148,7 +149,7 @@ describe("where the lockfile resolves from", () => {
   it("refuses a resolved URL of another package even when the name field is absent", () => {
     const { pkg, lock } = fresh();
     entry(lock, "node_modules/body-parser").resolved = "https://registry.npmjs.org/left-pad/-/left-pad-1.3.0.tgz";
-    expect(problems(pkg, lock)).toMatch(/node_modules\/body-parser is "body-parser" but resolves from .*left-pad/);
+    expect(problems(pkg, lock)).toMatch(/node_modules\/body-parser is "body-parser@[0-9.]+" but resolves from .*left-pad/);
   });
 
   it("pins the five aliases by path, name and version", () => {
@@ -322,5 +323,103 @@ describe("what the runtime tree may not hold", () => {
     const devOnly = Object.entries(lock.packages).find(([where, e]) => where !== "" && e.dev === true && e.hasInstallScript === true);
     expect(devOnly).toBeDefined();
     expect(check(pkg, lock, allow, snapshot)).toEqual([]);
+  });
+});
+
+describe("a lockfile-only substitution of a package (the resolved URL decides what npm ci installs)", () => {
+  /** Every lock path of debug at one version; there are several runtime copies of 2.6.9. */
+  const copies = (lock: Lock): string[] => Object.keys(lock.packages).filter((where) => where.endsWith("/debug") && lock.packages[where]?.version === "2.6.9");
+
+  it("has several copies of one name and version, which is what makes the snapshot ambiguous", () => {
+    expect(copies(fresh().lock).length).toBeGreaterThan(1);
+  });
+
+  it("refuses a resolved URL that walks out of its package's path with .. and installs another package", () => {
+    const { pkg, lock } = fresh();
+    const where = copies(lock)[0] ?? "";
+    const left = entry(lock, where);
+    left.resolved = "https://registry.npmjs.org/debug/-/../../left-pad/-/left-pad-1.3.0.tgz";
+    left.integrity = "sha512-" + "L".repeat(86) + "==";
+    expect(problems(pkg, lock)).toMatch(/is "debug@2\.6\.9" but resolves from .*left-pad.*not https:\/\/registry\.npmjs\.org\/debug\/-\/debug-2\.6\.9\.tgz/);
+  });
+
+  it("refuses the same trick without .., installing another version of the same package", () => {
+    const { pkg, lock } = fresh();
+    const left = entry(lock, copies(lock)[0] ?? "");
+    left.resolved = "https://registry.npmjs.org/debug/-/debug-4.4.0.tgz";
+    expect(problems(pkg, lock)).toMatch(/resolves from .*debug-4\.4\.0\.tgz, not https:\/\/registry\.npmjs\.org\/debug\/-\/debug-2\.6\.9\.tgz/);
+  });
+
+  it.each(["%2e%2e/", "?x=1", "#frag", "//", "/./"])("refuses a resolved URL with %s in it", (junk) => {
+    const { pkg, lock } = fresh();
+    entry(lock, copies(lock)[0] ?? "").resolved = `https://registry.npmjs.org/debug/-/${junk}debug-2.6.9.tgz`;
+    expect(problems(pkg, lock)).toMatch(/not https:\/\/registry\.npmjs\.org\/debug\/-\/debug-2\.6\.9\.tgz/);
+  });
+
+  it("refuses a version that is not plain semver, which could steer the URL", () => {
+    const { pkg, lock } = fresh();
+    entry(lock, copies(lock)[0] ?? "").version = "2.6.9/../../x";
+    expect(problems(pkg, lock)).toMatch(/version that is not plain semver/);
+  });
+
+  it("holds scoped names to the same exact URL (the scope stays in the path only)", () => {
+    const { pkg, lock } = fresh();
+    expect(entry(lock, "node_modules/@tsoa/runtime").resolved).toMatch(/^https:\/\/registry\.npmjs\.org\/@tsoa\/runtime\/-\/runtime-6\.[0-9.]+\.tgz$/);
+    expect(check(pkg, lock, allow, snapshot)).toEqual([]);
+    entry(lock, "node_modules/@tsoa/runtime").resolved = "https://registry.npmjs.org/@tsoa/runtime/-/@tsoa/runtime-6.6.0.tgz";
+    expect(problems(pkg, lock)).toMatch(/node_modules\/@tsoa\/runtime is "@tsoa\/runtime@/);
+  });
+
+  it("refuses the same name and version with different integrity at two lock paths, instead of letting one overwrite the other", () => {
+    const { pkg, lock } = fresh();
+    const [first, second] = copies(lock);
+    expect(first).toBeDefined();
+    entry(lock, second ?? "").integrity = "sha512-" + "Z".repeat(86) + "==";
+    const out = problems(pkg, lock);
+    expect(out).toMatch(/debug@2\.6\.9 has different integrity at node_modules\/.*debug and at node_modules\/.*debug: one name and version, two sets of bytes/);
+  });
+
+  it("refuses it whichever copy is the odd one out, first or last", () => {
+    for (const index of [0, copies(fresh().lock).length - 1]) {
+      const { pkg, lock } = fresh();
+      entry(lock, copies(lock)[index] ?? "").integrity = "sha512-" + "Y".repeat(86) + "==";
+      expect(problems(pkg, lock)).toMatch(/two sets of bytes/);
+    }
+  });
+});
+
+describe("what npm ci --omit=dev installs", () => {
+  it("counts devOptional as runtime: it is installed (only dev: true is left out)", () => {
+    const { pkg, lock } = fresh();
+    const jest = entry(lock, "node_modules/supertest");
+    delete jest.dev;
+    jest.devOptional = true;
+    expect(problems(pkg, lock)).toMatch(/gained supertest@[0-9.]+ \[runtime\]/);
+  });
+
+  it("holds a devOptional package to the runtime rules (no install script, no platform binary)", () => {
+    const { pkg, lock } = fresh();
+    const accepts = entry(lock, "node_modules/accepts");
+    delete accepts.dev;
+    accepts.devOptional = true;
+    accepts.hasInstallScript = true;
+    expect(problems(pkg, lock)).toMatch(/runtime package node_modules\/accepts has an install script/);
+  });
+});
+
+describe("local packages", () => {
+  it("refuses workspaces in package.json", () => {
+    const { pkg, lock } = fresh();
+    pkg.workspaces = ["packages/*"];
+    expect(problems(pkg, lock)).toMatch(/package\.json has workspaces/);
+  });
+
+  it("refuses a link entry in the lockfile, with or without a resolved URL", () => {
+    const a = fresh();
+    a.lock.packages["node_modules/local-thing"] = { version: "1.0.0", link: true };
+    expect(problems(a.pkg, a.lock)).toMatch(/node_modules\/local-thing is a link \(link: true\)/);
+    const b = fresh();
+    b.lock.packages["node_modules/local-thing"] = { version: "1.0.0", link: true, resolved: "packages/local-thing" };
+    expect(problems(b.pkg, b.lock)).toMatch(/is a link/);
   });
 });

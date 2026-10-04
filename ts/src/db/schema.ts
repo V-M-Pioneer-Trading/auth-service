@@ -1,6 +1,6 @@
 /**
  * @file The schema, applied on every start. Byte for byte the DDL of the Go service's `src/db/schema.sql`
- * (`db/schema.test.ts` compares them, and compares both with a database the Go image wrote): the schema does not
+ * (`db.test.ts` compares them, and compares both with a database the Go image wrote): the schema does not
  * change in this port, so a rollback to the Go image opens the same file.
  */
 export const SCHEMA = `CREATE TABLE IF NOT EXISTS credential (

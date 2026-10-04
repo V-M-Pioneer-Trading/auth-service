@@ -61,6 +61,8 @@ jobs:
   # on it must not, and the measured numbers must equal ts/contract-skip.expected. The list is every case of a route not
   # ported yet; it shrinks with each port PR and is empty after 7d. contract/ is never edited to make this pass.
   contract-ts:
+    # Nothing is installed or built from a lockfile the dependency gate has not passed.
+    needs: ts-checks
     runs-on: ubuntu-latest
     timeout-minutes: 20
     steps:

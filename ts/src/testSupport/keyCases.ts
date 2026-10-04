@@ -116,6 +116,16 @@ export function keyCases(): KeyCase[] {
     { name: "valid-ec-block-then-the-rsa-key", pem: `${armor("PUBLIC KEY", ec.publicKey.export({ type: "spki", format: "der" }))}${good}` },
     { name: "two-keys", pem: `${good}${armor("PUBLIC KEY", small.publicKey.export({ type: "spki", format: "der" }))}` },
     { name: "private-then-public", pem: `${armor("PRIVATE KEY", rsaPrivatePkcs8)}${good}` },
+    // Bytes after the structure: Go's x509 parsers refuse them, OpenSSL's ignore them.
+    { name: "spki-trailing-zero-byte", pem: armor("PUBLIC KEY", Buffer.concat([rsaPublicSpki, Buffer.from([0])])) },
+    { name: "pkcs1-public-trailing-zero-byte", pem: armor("RSA PUBLIC KEY", Buffer.concat([rsaPublicPkcs1, Buffer.from([0])])) },
+    { name: "pkcs8-private-trailing-zero-byte", pem: armor("PRIVATE KEY", Buffer.concat([rsaPrivatePkcs8, Buffer.from([0])])) },
+    { name: "pkcs1-private-trailing-zero-byte", pem: armor("RSA PRIVATE KEY", Buffer.concat([rsaPrivatePkcs1, Buffer.from([0])])) },
+    { name: "spki-trailing-garbage", pem: armor("PUBLIC KEY", Buffer.concat([rsaPublicSpki, Buffer.from("garbage")])) },
+    // The END line must start a line, and the first END decides.
+    { name: "end-marker-on-the-body-line", pem: `-----BEGIN PUBLIC KEY-----\n${goodBody}-----END PUBLIC KEY-----\n` },
+    { name: "end-marker-indented", pem: good.replace("-----END", " -----END") },
+    { name: "wrong-end-label-then-the-right-one", pem: good.replace("-----END PUBLIC KEY-----", "-----END RSA PUBLIC KEY-----\n-----END PUBLIC KEY-----") },
     { name: "literal-backslash-n-one-line", pem: good.trim().replaceAll("\n", "\\n") },
   ];
 }

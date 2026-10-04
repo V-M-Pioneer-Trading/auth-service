@@ -16,7 +16,7 @@
     "openapi": "node scripts/codegen.cjs && node scripts/write-openapi.cjs",
     "check:deps": "node scripts/check-dependencies.cjs",
     "snapshot:deps": "node scripts/check-dependencies.cjs --write-snapshot",
-    "pretest": "node scripts/codegen.cjs",
+    "pretest": "node scripts/codegen.cjs && tsc -p tsconfig.build.json",
     "test": "jest"
   },
   "dependencies": {

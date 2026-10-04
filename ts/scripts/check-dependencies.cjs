@@ -9,8 +9,9 @@
 //     ships; [dev]: everything else), and the snapshot may hold nothing the lockfile no longer has. A new transitive
 //     package is therefore a visible diff in a reviewed pull request, never a silent arrival: adding or upgrading
 //     anything means `npm run snapshot:deps` and committing the result. The runtime section is the one to read.
-//  3. The lockfile's shape: every `resolved` is the npm registry, under the package's own name, or (for the one named
-//     package) its GitHub release tarball; sha512 integrity everywhere; no entry installed under another name than its
+//  3. The lockfile's shape: every `resolved` is exactly the registry's URL for the entry's name and version
+//     (https://registry.npmjs.org/<name>/-/<basename>-<version>.tgz, so no `..` or other package rides on it), or (for
+//     the one named package) its GitHub release tarball; one name@version with two integrities is refused, not merged; sha512 integrity everywhere; no entry installed under another name than its
 //     path (bar the pinned aliases npm writes for jest); no overrides/resolutions, bundled dependencies or .npmrc;
 //     and nothing in the runtime section that installs code outside the registry's tarball: no install script, no
 //     platform-specific binary (the image build also fails on a compiled file in the production tree).
@@ -68,8 +69,11 @@ function parseAllowlist(text) {
 /** The name a lock path installs: what follows its last node_modules/. */
 const nameOfPath = (where) => where.slice(where.lastIndexOf("node_modules/") + "node_modules/".length);
 
-/** Which snapshot section a lockfile entry belongs to. `dev` and `devOptional` are never installed with --omit=dev. */
-const sectionOfEntry = (entry) => (entry.dev === true || entry.devOptional === true ? "dev" : "runtime");
+/**
+ * Which snapshot section a lockfile entry belongs to. Only `dev: true` is never installed with --omit=dev:
+ * `devOptional` (a dev dependency that is also an optional one of something that ships) IS installed, so it is runtime.
+ */
+const sectionOfEntry = (entry) => (entry.dev === true ? "dev" : "runtime");
 
 /** The snapshot of a lockfile: Map "section name@version" -> integrity. The name is the installed one (aliases keep their path name). */
 function computeSnapshot(lock) {
@@ -77,9 +81,39 @@ function computeSnapshot(lock) {
   for (const [where, entry] of Object.entries(lock.packages ?? {})) {
     if (where === "") continue;
     const name = entry.name ?? nameOfPath(where);
-    out.set(`${sectionOfEntry(entry)} ${name}@${entry.version}`, entry.integrity ?? "(no integrity)");
+    const key = `${sectionOfEntry(entry)} ${name}@${entry.version}`;
+    // A second copy of the same name@version keeps the first's integrity: a different one is reported by snapshotConflicts.
+    if (!out.has(key)) out.set(key, entry.integrity ?? "(no integrity)");
   }
   return out;
+}
+
+/**
+ * The same name@version in one section with different integrity at two lock paths: the snapshot line can hold only
+ * one, and a silent overwrite would let a substituted package hide behind an honest copy.
+ */
+function snapshotConflicts(lock) {
+  const seen = new Map();
+  const problems = [];
+  for (const [where, entry] of Object.entries(lock.packages ?? {})) {
+    if (where === "") continue;
+    const name = entry.name ?? nameOfPath(where);
+    const key = `${sectionOfEntry(entry)} ${name}@${entry.version}`;
+    const integrity = entry.integrity ?? "(no integrity)";
+    const first = seen.get(key);
+    if (first === undefined) seen.set(key, { where, integrity });
+    else if (first.integrity !== integrity) {
+      problems.push(`package-lock.json: ${name}@${entry.version} has different integrity at ${first.where} and at ${where}: one name and version, two sets of bytes`);
+    }
+  }
+  return problems;
+}
+
+const SEMVER_VERSION = /^[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.-]+)?(\+[0-9A-Za-z.-]+)?$/;
+
+/** The one URL the registry serves a package's tarball from: scoped names keep their scope in the path only. */
+function registryTarball(name, version) {
+  return `https://registry.npmjs.org/${name}/-/${name.slice(name.lastIndexOf("/") + 1)}-${version}.tgz`;
 }
 
 function renderSnapshot(snapshot) {
@@ -160,6 +194,8 @@ function check(pkg, lock, allowlistText, snapshotText, opts = {}) {
   for (const key of ["overrides", "resolutions"]) {
     if (key in pkg) problems.push(`package.json has ${key}; a name must resolve to itself`);
   }
+  // A workspace makes local directories packages, installed from disk with no registry or integrity behind them.
+  if ("workspaces" in pkg) problems.push("package.json has workspaces; local packages are not admitted");
   if (opts.npmrc) problems.push(".npmrc exists; it can redirect the registry or alias packages. Configure nothing there");
   const lockRoot = lock.packages?.[""] ?? {};
   for (const section of SECTIONS) {
@@ -192,6 +228,8 @@ function check(pkg, lock, allowlistText, snapshotText, opts = {}) {
       problems.push(`package-lock.json: ${where} is not the pinned alias ${alias.name}@${alias.version}`);
     }
     const resolved = entry.resolved;
+    // A link is a package that is a directory on disk (a workspace, a file: dependency): never admitted.
+    if (entry.link) problems.push(`package-lock.json: ${where} is a link (link: true); a package must come from the registry`);
     if (resolved === undefined) {
       if (!entry.link) problems.push(`package-lock.json: ${where} has no resolved URL`);
       continue;
@@ -204,8 +242,12 @@ function check(pkg, lock, allowlistText, snapshotText, opts = {}) {
       if (where !== `node_modules/${installedAs}`) problems.push(`package-lock.json: ${where} resolves from the ${installedAs} release tarball but is not at the top level`);
     } else if (!resolved.startsWith("https://registry.npmjs.org/")) {
       problems.push(`package-lock.json: ${where} resolves from ${resolved}, which is neither registry.npmjs.org nor an admitted release tarball`);
-    } else if (!resolved.startsWith(`https://registry.npmjs.org/${installedAs}/-/`)) {
-      problems.push(`package-lock.json: ${where} is "${installedAs}" but resolves from ${resolved}`);
+    } else if (typeof entry.version !== "string" || !SEMVER_VERSION.test(entry.version)) {
+      problems.push(`package-lock.json: ${where} has a version that is not plain semver: ${JSON.stringify(entry.version)}`);
+    } else if (resolved !== registryTarball(installedAs, entry.version)) {
+      // Exactly the registry's URL for this name and version, so a path of ".." or a URL of another package or version
+      // cannot ride on an honest name and version (npm ci installs what resolved says, not what the entry says).
+      problems.push(`package-lock.json: ${where} is "${installedAs}@${entry.version}" but resolves from ${resolved}, not ${registryTarball(installedAs, entry.version)}`);
     }
     if (!/^sha512-[A-Za-z0-9+/]+=*$/.test(entry.integrity ?? "")) problems.push(`package-lock.json: ${where} has no sha512 integrity`);
     // The runtime tree is what the image ships: nothing that runs code at install time or is built per platform.
@@ -215,11 +257,12 @@ function check(pkg, lock, allowlistText, snapshotText, opts = {}) {
       if (entry.optional === true) problems.push(`package-lock.json: runtime package ${where} is optional`);
     }
   }
+  problems.push(...snapshotConflicts(lock));
   problems.push(...snapshotProblems(lock, snapshotText));
   return problems;
 }
 
-module.exports = { check, parseAllowlist, computeSnapshot, renderSnapshot, parseSnapshot, snapshotProblems, KNOWN_ALIASES };
+module.exports = { check, parseAllowlist, snapshotConflicts, registryTarball, computeSnapshot, renderSnapshot, parseSnapshot, snapshotProblems, KNOWN_ALIASES };
 
 if (require.main === module) {
   const root = path.join(__dirname, "..");

@@ -29,9 +29,11 @@ export function firstPemBlock(text: string): Buffer | null {
       if (!line.includes(":") || newline < 0) break;
       bodyStart = newline + 1;
     }
+    // The END line starts a line (Go looks for "\n-----END ", or finds it at once after an empty body) and, like Go,
+    // the FIRST one decides: one with another label ends this block's chance, however many follow.
     const marker = `-----END ${label}-----`;
-    const end = text.indexOf(marker, bodyStart);
-    if (end < 0) continue;
+    const end = text.startsWith("-----END ", bodyStart) ? bodyStart : text.indexOf("\n-----END ", bodyStart) + 1;
+    if (end < 1 || !text.startsWith(marker, end)) continue;
     // The rest of the END line must be whitespace.
     const lineEnd = text.indexOf("\n", end);
     if (!/^[ \t\r]*$/.test(text.slice(end + marker.length, lineEnd < 0 ? text.length : lineEnd))) continue;
@@ -74,10 +76,19 @@ function isPkcs1PublicDer(der: Buffer): boolean {
   return e?.tag === 0x02 && e.end === seq.end;
 }
 
+/**
+ * Go's x509 parsers refuse bytes after the structure (all but ParsePKCS8PrivateKey); OpenSSL's reader ignores them.
+ * Every key here is one outer SEQUENCE, so it must span the whole DER.
+ */
+function isOneSequence(der: Buffer): boolean {
+  const seq = derElement(der, 0);
+  return seq?.tag === 0x30 && seq.end === der.length;
+}
+
 /** golang-jwt's ParseRSAPublicKeyFromPEM; null when it would return an error. */
 export function parseRsaPublicKey(pem: string): KeyObject | null {
   const der = firstPemBlock(pem);
-  if (der === null) return null;
+  if (der === null || !isOneSequence(der)) return null;
   let key: KeyObject | undefined;
   try {
     key = createPublicKey({ key: der, format: "der", type: "spki" });
@@ -102,6 +113,8 @@ export function parseRsaPrivateKey(pem: string): KeyObject | null {
   if (der === null) return null;
   let key: KeyObject | undefined;
   for (const type of ["pkcs1", "pkcs8"] as const) {
+    // Go: ParsePKCS1PrivateKey refuses bytes after the key, ParsePKCS8PrivateKey does not (recorded: go-verdicts.json).
+    if (type === "pkcs1" && !isOneSequence(der)) continue;
     try {
       key = createPrivateKey({ key: der, format: "der", type });
       break;
