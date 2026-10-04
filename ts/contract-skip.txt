@@ -1,0 +1,112 @@
+# Contract cases the TypeScript service does not pass yet: every case of a route that is not ported.
+# Step 7a ports the health and status routes, CORS, the router table and the startup refusals; what is
+# listed below arrives with 7b (introspection), 7c (the vault: GET /auth/v1/token, register, restore, the poller,
+# the Clerk session gate) and 7d (machine tokens). The list shrinks with each of those PRs and is empty after 7d.
+#
+# One JavaScript regular expression per line, handed to the judge in scripts/run-contract.cjs, matched like
+# `node --test --test-skip-pattern`: against the test's name with its enclosing describe names in front, joined by
+# single spaces, or against any enclosing describe's name alone. Blank lines and lines starting with "#" are
+# ignored. Never add a line for a case that fails for another reason (a red case must mean a defect), and never
+# edit contract/ to make the port pass.
+#
+# scripts/run-contract.cjs refuses a run whose numbers do not match contract-skip.expected.
+
+^every fixture case, answered by the center operator-on-public-get \[active\]$
+^every fixture case, answered by the center inactive-token-on-public-get \[inactive\]$
+^every fixture case, answered by the center inactive-token-on-guarded-route \[inactive\]$
+^every fixture case, answered by the center session-route-with-inactive-token \[inactive\]$
+^every fixture case, answered by the center session-route-with-scopeless-token \[active\]$
+^every fixture case, answered by the center session-route-with-token-lacking-scope-key \[activeNoScopeKey\]$
+^every fixture case, answered by the center scoped-route-with-token-lacking-scope-key \[activeNoScopeKey\]$
+^every fixture case, answered by the center active-with-required-scope \[active\]$
+^every fixture case, answered by the center active-without-required-scope \[active\]$
+^every fixture case, answered by the center active-with-multi-value-scope \[active\]$
+^every fixture case, answered by the center active-with-irregular-scope-whitespace \[active\]$
+^every fixture case, answered by the center active-with-only-spaces-in-scope \[active\]$
+^every fixture case, answered by the center scope-joined-by-several-spaces \[active\]$
+^every fixture case, answered by the center scope-joined-by-tab \[active\]$
+^every fixture case, answered by the center scope-joined-by-no-break-space \[active\]$
+^every fixture case, answered by the center scope-joined-by-em-space \[active\]$
+^every fixture case, answered by the center scope-joined-by-vertical-tab \[active\]$
+^every fixture case, answered by the center scope-joined-by-form-feed \[active\]$
+^every fixture case, answered by the center active-with-non-separators-in-scope \[active\]$
+^every fixture case, answered by the center active-machine-kind \[active\]$
+^every fixture case, answered by the center kind-disagrees-with-sub-prefix \[active\]$
+^every fixture case, answered by the center center-rejects-our-caller-secret \[callerSecret\]$
+^every fixture case, answered by the center center-returns-duplicate-key \[ambiguousKeys\]$
+^every fixture case, answered by the center center-returns-case-variant-duplicate-key \[ambiguousKeys\]$
+^every fixture case, answered by the center center-returns-contract-key-in-another-case \[ambiguousKeys\]$
+^every fixture case, answered by the center active-with-scope-that-is-a-prefix-of-required \[active\]$
+^every fixture case, answered by the center active-with-scope-differing-only-in-case \[active\]$
+^every fixture case, answered by the center head-on-guarded-route-with-valid-token \[active\]$
+^every fixture case, answered by the center lowercase-bearer-scheme \[active\]$
+^every fixture case, answered by the center gateway-active-operator \[active\]$
+^every fixture case, answered by the center gateway-active-operator-lacking-scope-key \[activeNoScopeKey\]$
+^every fixture case, answered by the center gateway-active-machine \[active\]$
+^every fixture case, answered by the center gateway-kind-machine-with-user-subject \[active\]$
+^every fixture case, answered by the center gateway-kind-operator-with-machine-subject \[active\]$
+^every fixture case, answered by the center gateway-inactive-token \[inactive\]$
+^every fixture case, answered by the center gateway-center-rejects-our-caller-secret \[callerSecret\]$
+^every fixture case, answered by the center gateway-center-returns-duplicate-key \[ambiguousKeys\]$
+^every fixture case, answered by the center gateway-center-returns-case-variant-duplicate-key \[ambiguousKeys\]$
+^the caller secret gate$
+^where the token travels ignores a token in the query string: a request with no token is \{active:false\}$
+^where the token travels ignores a query token even next to a body that carries a different, valid token$
+^where the token travels lets the body token fail even when the query token would have verified$
+^where the token travels accepts the form content type with a charset parameter$
+^where the token travels does not read a token out of a JSON body$
+^where the token travels does not read a form body that declares no content type$
+^where the token travels answers \{active:false\} when the form body is malformed anywhere, even if a valid token came first$
+^where the token travels answers \{active:false\} when the URL query is malformed or uses a semicolon, even with a valid body token$
+^where the token travels answers \{active:false\} when the body uses a semicolon anywhere, even next to a valid token$
+^where the token travels reads the FIRST of two X-Introspection-Secret headers \(a runtime that joins duplicates with a comma fails this\)$
+^where the token travels uses the first of several token parameters$
+^where the token travels answers inactive for an absent, empty or whitespace-only token$
+^the 8 KiB body cap$
+^what verifies, and what is \{active:false\}$
+^with CLERK_ISSUER set$
+^the 10 s backoff after a failed mint$
+^the mint timeout$
+^a token past its exp$
+^refresh at half the lifetime$
+^what it asks Clerk$
+^single flight and the cache$
+^what makes a minted token unusable \(503, nothing cached, one Clerk call\)$
+^the caller table$
+^the secret gate$
+^which callers are enabled$
+^tokens only introspect when the dev key is the verification key$
+^the forced poll: GET /auth/v1/token\?afterUnauthorized=true$
+^wipe detection through the forced poll$
+^the 10 s cooldown on forced polls$
+^what survives a restart on the same /data volume$
+^what it asks of the caller$
+^what it sends to SpaceTraders$
+^what it stores and answers$
+^how upstream failures map to responses$
+^OPTIONS and CORS carries CORS on handler responses of every status, and on none of the router's own 404/405/301$
+^the M2M mint table is validated at startup has nothing to collide with when there is no introspection secret$
+^settings that leave the service running in a fail-closed state$
+^accepted spellings of keys$
+^log hygiene, production mode$
+^GET /auth/v1/token rejects a wrong or missing shared secret with 403, the envelope and no-store$
+^GET /auth/v1/token does not accept the introspection secret, a caller secret, or a Clerk session in place of the shared secret$
+^GET /auth/v1/token ignores a secret passed in the query string$
+^GET /auth/v1/token is 503 with a plain-text body while no credential is configured$
+^GET /auth/v1/token ignores surrounding whitespace in the secret header value$
+^GET /auth/v1/token returns the agent token, and only that, once registered; Cache-Control is absent today and no-store would also be accepted$
+^GET /auth/v1/token is 503 again if the stored agent token is empty$
+^GET /auth/v1/status and /api/auth/v1/status reports HEALTHY with the symbol and RFC 3339 dates once registered, and never a token$
+^GET /auth/v1/status and /api/auth/v1/status is WIPE_IMMINENT inside the 24 h before the predicted reset, and HEALTHY outside it$
+^GET /auth/v1/status and /api/auth/v1/status stays WIPE_IMMINENT after the predicted reset has passed$
+^GET /auth/v1/status and /api/auth/v1/status formats dates the way Go's RFC 3339 does: offsets kept, fractions dropped, date-only read as midnight UTC$
+^GET /auth/v1/status and /api/auth/v1/status omits a date it cannot parse instead of failing$
+^GET /auth/v1/status and /api/auth/v1/status omits both dates when the root carries neither$
+^the session gate on the operator routes 401 'a bearer token is required' when there is no usable bearer credential$
+^the session gate on the operator routes 401 'invalid or expired session' for anything that does not verify, naming no reason$
+^the session gate on the operator routes 403 'requires a scope this session does not carry' for a valid session without agent:reset$
+^the session gate on the operator routes does not take the token from the query string$
+^the session gate on the operator routes decides on the first of two Authorization headers$
+^the session gate on the operator routes splits the scope on runs of space, tab, CR and LF and on nothing else \(fixture v6\)$
+^the session gate on the operator routes authenticates before it reads the body$
+^POST /api/auth/v1/agent-token \(Restore Token\)$

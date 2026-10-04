@@ -1,0 +1,40 @@
+{
+  "name": "auth-service",
+  "version": "0.0.0",
+  "private": true,
+  "description": "auth-service: the SpaceTraders game credential, the fleet's token verifier and machine-token minter (meta#103, decision 23).",
+  "main": "dist/server.js",
+  "engines": {
+    "node": ">=24.15"
+  },
+  "scripts": {
+    "codegen": "node scripts/codegen.cjs",
+    "build": "node scripts/codegen.cjs && tsc -p tsconfig.build.json",
+    "typecheck": "node scripts/codegen.cjs && tsc -p tsconfig.json --noEmit",
+    "lint": "eslint . --max-warnings 0",
+    "start": "node dist/server.js",
+    "openapi": "node scripts/codegen.cjs && node scripts/write-openapi.cjs",
+    "check:deps": "node scripts/check-dependencies.cjs",
+    "snapshot:deps": "node scripts/check-dependencies.cjs --write-snapshot",
+    "pretest": "node scripts/codegen.cjs",
+    "test": "jest"
+  },
+  "dependencies": {
+    "@tsoa/runtime": "^6.6.0",
+    "express": "^4.22.3"
+  },
+  "devDependencies": {
+    "@types/express": "^4.17.25",
+    "@types/jest": "^30.0.0",
+    "@types/node": "^24.19.1",
+    "@types/supertest": "^6.0.3",
+    "@v-m-pioneer-trading/eslint-config": "https://github.com/V-M-Pioneer-Trading/eslint-config/releases/download/v1.0.0/v-m-pioneer-trading-eslint-config-1.0.0.tgz",
+    "eslint": "^10.12.0",
+    "jest": "^30.5.2",
+    "supertest": "^6.3.4",
+    "ts-jest": "^29.4.14",
+    "tsoa": "^6.6.0",
+    "typescript": "~5.9.0",
+    "typescript-eslint": "^8.71.0"
+  }
+}

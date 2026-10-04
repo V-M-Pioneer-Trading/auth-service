@@ -15,6 +15,10 @@ no GitHub repo, no live host, no traffic. It is also not yet wired into Caddy/Cl
 4). See `meta/docs/design/auth-design.md`'s "New repository: auth-service" and "Build order"
 sections for the full rollout plan.
 
+> **TypeScript port in progress** (meta#103, auth-design.md decision 23): `ts/` holds the TypeScript
+> service, built beside this Go one and held to it by `contract/`. Nothing deploys from it until the cutover
+> (auth-service#17). Contributor notes: `ts/CLAUDE.md`.
+
 ## Setup and local development
 
 ### Required software

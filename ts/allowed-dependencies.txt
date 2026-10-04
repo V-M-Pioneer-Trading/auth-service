@@ -1,0 +1,26 @@
+# Direct dependencies of package.json, per package.json section, and nothing else.
+# scripts/check-dependencies.cjs fails CI on any difference, on a name in the wrong section, on a spec that is not a
+# plain semver range (the eslint-config release tarball excepted), and on anything in package-lock.json that is not in
+# dependency-snapshot.txt (see that script's header). Adding a line is the first review point for a new dependency:
+# say why in the PR. The second is the snapshot diff, which shows what it brings with it.
+
+[dependencies]
+@tsoa/runtime                          # decorators and request validation of the generated routes (carries @hapi/* with it, see the snapshot)
+express                                # HTTP server, major version 4 (the other TS services, tsoa's generated routes)
+# jose joins in 7b (introspection): nothing in this step verifies a JWT. clerk-client is not a dependency and will not
+# be: auth-service is the verifier (decision 21), clerk-client is what the other services use to ask it.
+
+[devDependencies]
+# build, test and lint only; none of it is in the runtime image
+@types/express
+@types/jest
+@types/node
+@types/supertest
+@v-m-pioneer-trading/eslint-config     # the shared ESLint 10 flat config (release tarball, meta#105)
+eslint
+jest
+supertest
+ts-jest
+tsoa                                   # spec and route generation
+typescript
+typescript-eslint

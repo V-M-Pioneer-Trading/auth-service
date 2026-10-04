@@ -1,0 +1,7 @@
+# The generated OpenAPI spec is regenerated and diffed byte for byte in CI;
+# keep LF in the working tree on Windows too.
+openapi.json -text
+
+# Written by the Go image's db package; compared byte for byte by its sha256 in fixtures/SOURCE.txt.
+src/__tests__/fixtures/go-written.db binary
+src/__tests__/fixtures/go-verdicts.json -text

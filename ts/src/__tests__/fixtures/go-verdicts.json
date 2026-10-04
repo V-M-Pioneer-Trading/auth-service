@@ -1,0 +1,1115 @@
+{
+ "goVersion": "go1.22.4 (the Go service's go.mod says 1.22.4; its image builds with golang:1.22-alpine)",
+ "urls": [
+  [
+   "http://stub.example",
+   "ok http://stub.example -> http://stub.example/v1/m2m_tokens"
+  ],
+  [
+   "https://stub.example",
+   "ok https://stub.example -> https://stub.example/v1/m2m_tokens"
+  ],
+  [
+   "HTTP://STUB.EXAMPLE",
+   "ok http://STUB.EXAMPLE -> HTTP://STUB.EXAMPLE/v1/m2m_tokens"
+  ],
+  [
+   "Https://Stub.Example/Base",
+   "ok https://Stub.Example -> Https://Stub.Example/Base/v1/m2m_tokens"
+  ],
+  [
+   "http://stub.example/",
+   "ok http://stub.example -> http://stub.example/v1/m2m_tokens"
+  ],
+  [
+   "http://stub.example//",
+   "ok http://stub.example -> http://stub.example/v1/m2m_tokens"
+  ],
+  [
+   "http://stub.example/base/",
+   "ok http://stub.example -> http://stub.example/base/v1/m2m_tokens"
+  ],
+  [
+   "http://stub.example/base///",
+   "ok http://stub.example -> http://stub.example/base/v1/m2m_tokens"
+  ],
+  [
+   "http://stub.example:8080",
+   "ok http://stub.example:8080 -> http://stub.example:8080/v1/m2m_tokens"
+  ],
+  [
+   "http://stub.example:",
+   "ok http://stub.example: -> http://stub.example:/v1/m2m_tokens"
+  ],
+  [
+   "http://stub.example:99999",
+   "ok http://stub.example:99999 -> http://stub.example:99999/v1/m2m_tokens"
+  ],
+  [
+   "http://stub.example:abc",
+   "refused"
+  ],
+  [
+   "http://127.0.0.1:3000",
+   "ok http://127.0.0.1:3000 -> http://127.0.0.1:3000/v1/m2m_tokens"
+  ],
+  [
+   "http://[::1]:3000",
+   "ok http://[::1]:3000 -> http://[::1]:3000/v1/m2m_tokens"
+  ],
+  [
+   "http://[::1]",
+   "ok http://[::1] -> http://[::1]/v1/m2m_tokens"
+  ],
+  [
+   "http://[::1",
+   "refused"
+  ],
+  [
+   "http://[]",
+   "refused"
+  ],
+  [
+   "http://[]:80",
+   "refused"
+  ],
+  [
+   "http://[fe80::1%25en0]:80",
+   "ok http://[fe80::1%en0]:80 -> http://[fe80::1%25en0]:80/v1/m2m_tokens"
+  ],
+  [
+   "http://[fe80::1%en0]",
+   "refused"
+  ],
+  [
+   "http://[fe80::1%25]",
+   "ok http://[fe80::1%] -> http://[fe80::1%25]/v1/m2m_tokens"
+  ],
+  [
+   "http://[fe80::1%25en%30]",
+   "ok http://[fe80::1%en0] -> http://[fe80::1%25en%30]/v1/m2m_tokens"
+  ],
+  [
+   "http://[fe80::1%25en%20]",
+   "ok http://[fe80::1%en ] -> http://[fe80::1%25en%20]/v1/m2m_tokens"
+  ],
+  [
+   "http://[fe80::1%25en%7f]",
+   "refused"
+  ],
+  [
+   "http://[not-an-ip]",
+   "ok http://[not-an-ip] -> http://[not-an-ip]/v1/m2m_tokens"
+  ],
+  [
+   "http://[1.2.3.4]",
+   "ok http://[1.2.3.4] -> http://[1.2.3.4]/v1/m2m_tokens"
+  ],
+  [
+   "http://a[b",
+   "ok http://a[b -> http://a[b/v1/m2m_tokens"
+  ],
+  [
+   "http://a]b",
+   "ok http://a]b -> http://a]b/v1/m2m_tokens"
+  ],
+  [
+   "http://[a]b",
+   "refused"
+  ],
+  [
+   "http://ho st",
+   "refused"
+  ],
+  [
+   "http://ho%20st",
+   "refused"
+  ],
+  [
+   "http://ho%41st",
+   "refused"
+  ],
+  [
+   "http://ho%c3%a9st",
+   "ok http://hoést -> http://ho%c3%a9st/v1/m2m_tokens"
+  ],
+  [
+   "http://%C3%A9.example",
+   "ok http://é.example -> http://%C3%A9.example/v1/m2m_tokens"
+  ],
+  [
+   "http://é.example",
+   "ok http://é.example -> http://é.example/v1/m2m_tokens"
+  ],
+  [
+   "http://%zz.example",
+   "refused"
+  ],
+  [
+   "http://%2f",
+   "refused"
+  ],
+  [
+   "http://host%25",
+   "ok http://host% -> http://host%25/v1/m2m_tokens"
+  ],
+  [
+   "http://host%",
+   "refused"
+  ],
+  [
+   "http://host%2",
+   "refused"
+  ],
+  [
+   "http://host/%zz",
+   "refused"
+  ],
+  [
+   "http://host/%",
+   "refused"
+  ],
+  [
+   "http://host/a%20b",
+   "ok http://host -> http://host/a%20b/v1/m2m_tokens"
+  ],
+  [
+   "http://host/a b",
+   "ok http://host -> http://host/a b/v1/m2m_tokens"
+  ],
+  [
+   "http://host/é",
+   "ok http://host -> http://host/é/v1/m2m_tokens"
+  ],
+  [
+   "http://",
+   "refused"
+  ],
+  [
+   "http:///x",
+   "refused"
+  ],
+  [
+   "http:/x",
+   "refused"
+  ],
+  [
+   "http:x",
+   "refused"
+  ],
+  [
+   "http:",
+   "refused"
+  ],
+  [
+   "http",
+   "refused"
+  ],
+  [
+   "//host",
+   "refused"
+  ],
+  [
+   "/host",
+   "refused"
+  ],
+  [
+   "host",
+   "refused"
+  ],
+  [
+   "host:80",
+   "refused"
+  ],
+  [
+   "host:80/x",
+   "refused"
+  ],
+  [
+   "localhost:3000",
+   "refused"
+  ],
+  [
+   "ftp://stub.example",
+   "refused"
+  ],
+  [
+   "file:///etc/passwd",
+   "refused"
+  ],
+  [
+   "ws://stub.example",
+   "refused"
+  ],
+  [
+   "not a url",
+   "refused"
+  ],
+  [
+   " http://stub.example",
+   "refused"
+  ],
+  [
+   "http://stub.example ",
+   "refused"
+  ],
+  [
+   "\thttp://stub.example",
+   "refused"
+  ],
+  [
+   "http://stub.example\t",
+   "refused"
+  ],
+  [
+   "http://stub.example\n",
+   "refused"
+  ],
+  [
+   "http://stub\u0000.example",
+   "refused"
+  ],
+  [
+   "http://stub.example",
+   "refused"
+  ],
+  [
+   "http://user@stub.example",
+   "refused"
+  ],
+  [
+   "http://user:hunter2@stub.example",
+   "refused"
+  ],
+  [
+   "http://:pass@stub.example",
+   "refused"
+  ],
+  [
+   "http://@stub.example",
+   "refused"
+  ],
+  [
+   "http://user@",
+   "refused"
+  ],
+  [
+   "http://a@b@c.example",
+   "refused"
+  ],
+  [
+   "http://us er@stub.example",
+   "refused"
+  ],
+  [
+   "http://stub.example?",
+   "refused"
+  ],
+  [
+   "http://stub.example?x=1",
+   "refused"
+  ],
+  [
+   "http://stub.example/?",
+   "refused"
+  ],
+  [
+   "http://stub.example/base?x",
+   "refused"
+  ],
+  [
+   "http://stub.example#",
+   "refused"
+  ],
+  [
+   "http://stub.example#frag",
+   "refused"
+  ],
+  [
+   "http://stub.example/x#y",
+   "refused"
+  ],
+  [
+   "http://stub.example/%23",
+   "ok http://stub.example -> http://stub.example/%23/v1/m2m_tokens"
+  ],
+  [
+   "http://stub.example/a/../b",
+   "ok http://stub.example -> http://stub.example/a/../b/v1/m2m_tokens"
+  ],
+  [
+   "http://stub.example/./b",
+   "ok http://stub.example -> http://stub.example/./b/v1/m2m_tokens"
+  ],
+  [
+   "http://stub.example/a;b",
+   "ok http://stub.example -> http://stub.example/a;b/v1/m2m_tokens"
+  ],
+  [
+   "http://stub.example/a:b",
+   "ok http://stub.example -> http://stub.example/a:b/v1/m2m_tokens"
+  ],
+  [
+   "http://stub.example/{}",
+   "ok http://stub.example -> http://stub.example/{}/v1/m2m_tokens"
+  ],
+  [
+   "http://stub.example/|",
+   "ok http://stub.example -> http://stub.example/|/v1/m2m_tokens"
+  ],
+  [
+   "http://stub.example/\\",
+   "ok http://stub.example -> http://stub.example/\\/v1/m2m_tokens"
+  ],
+  [
+   "http://stub.example\\path",
+   "refused"
+  ],
+  [
+   "http://stub.example;x",
+   "ok http://stub.example;x -> http://stub.example;x/v1/m2m_tokens"
+  ],
+  [
+   "http://stub_example",
+   "ok http://stub_example -> http://stub_example/v1/m2m_tokens"
+  ],
+  [
+   "http://-stub.example",
+   "ok http://-stub.example -> http://-stub.example/v1/m2m_tokens"
+  ],
+  [
+   "http://stub..example",
+   "ok http://stub..example -> http://stub..example/v1/m2m_tokens"
+  ],
+  [
+   "http://.",
+   "ok http://. -> http://./v1/m2m_tokens"
+  ],
+  [
+   "http://..",
+   "ok http://.. -> http://../v1/m2m_tokens"
+  ],
+  [
+   "http://0x7f.1",
+   "ok http://0x7f.1 -> http://0x7f.1/v1/m2m_tokens"
+  ],
+  [
+   "http://1.2.3",
+   "ok http://1.2.3 -> http://1.2.3/v1/m2m_tokens"
+  ],
+  [
+   "http://256.256.256.256",
+   "ok http://256.256.256.256 -> http://256.256.256.256/v1/m2m_tokens"
+  ],
+  [
+   "http://host.docker.internal:54321",
+   "ok http://host.docker.internal:54321 -> http://host.docker.internal:54321/v1/m2m_tokens"
+  ],
+  [
+   "http://host.docker.internal:54321/base-path-sentinel",
+   "ok http://host.docker.internal:54321 -> http://host.docker.internal:54321/base-path-sentinel/v1/m2m_tokens"
+  ],
+  [
+   "https://api.clerk.com",
+   "ok https://api.clerk.com -> https://api.clerk.com/v1/m2m_tokens"
+  ],
+  [
+   "https://api.clerk.com/",
+   "ok https://api.clerk.com -> https://api.clerk.com/v1/m2m_tokens"
+  ],
+  [
+   "https://api.clerk.com/v1",
+   "ok https://api.clerk.com -> https://api.clerk.com/v1/v1/m2m_tokens"
+  ],
+  [
+   "1http://stub.example",
+   "refused"
+  ],
+  [
+   "+http://stub.example",
+   "refused"
+  ],
+  [
+   "h+t-t.p://stub.example",
+   "refused"
+  ],
+  [
+   "http+x://stub.example",
+   "refused"
+  ],
+  [
+   ":http://stub.example",
+   "refused"
+  ],
+  [
+   "://stub.example",
+   "refused"
+  ],
+  [
+   "http//stub.example",
+   "refused"
+  ],
+  [
+   "http:\\\\stub.example",
+   "refused"
+  ],
+  [
+   "HtTp://Stub.Example:80/Path",
+   "ok http://Stub.Example:80 -> HtTp://Stub.Example:80/Path/v1/m2m_tokens"
+  ],
+  [
+   "http://stub.example:0",
+   "ok http://stub.example:0 -> http://stub.example:0/v1/m2m_tokens"
+  ],
+  [
+   "http://stub.example:00080",
+   "ok http://stub.example:00080 -> http://stub.example:00080/v1/m2m_tokens"
+  ],
+  [
+   "http://stub.example:-1",
+   "refused"
+  ],
+  [
+   "http://stub.example: 80",
+   "refused"
+  ],
+  [
+   "http://[::1]:",
+   "ok http://[::1]: -> http://[::1]:/v1/m2m_tokens"
+  ],
+  [
+   "http://[::1]:x",
+   "refused"
+  ],
+  [
+   "http://[::1]x",
+   "refused"
+  ],
+  [
+   "http://*",
+   "ok http://* -> http://*/v1/m2m_tokens"
+  ],
+  [
+   "http://!$&'()*+,;=:@host",
+   "refused"
+  ],
+  [
+   "http://host!$&'()*+,;=",
+   "ok http://host!$&'()*+,;= -> http://host!$&'()*+,;=/v1/m2m_tokens"
+  ],
+  [
+   "http://host\"",
+   "ok http://host\" -> http://host\"/v1/m2m_tokens"
+  ],
+  [
+   "http://host<>",
+   "ok http://host<> -> http://host<>/v1/m2m_tokens"
+  ],
+  [
+   "http://host`",
+   "refused"
+  ],
+  [
+   "http://host^",
+   "refused"
+  ],
+  [
+   "http://host{",
+   "refused"
+  ],
+  [
+   "http://ho~st",
+   "ok http://ho~st -> http://ho~st/v1/m2m_tokens"
+  ],
+  [
+   "http://ho_st",
+   "ok http://ho_st -> http://ho_st/v1/m2m_tokens"
+  ],
+  [
+   "http://ho-st",
+   "ok http://ho-st -> http://ho-st/v1/m2m_tokens"
+  ]
+ ],
+ "times": [
+  [
+   "2026-10-04T12:34:56Z",
+   "2026-10-04T12:34:56Z 1791117296000"
+  ],
+  [
+   "2026-10-04T12:34:56+02:00",
+   "2026-10-04T12:34:56+02:00 1791110096000"
+  ],
+  [
+   "2026-10-04T12:34:56-07:30",
+   "2026-10-04T12:34:56-07:30 1791144296000"
+  ],
+  [
+   "2026-10-04T12:34:56+00:00",
+   "2026-10-04T12:34:56Z 1791117296000"
+  ],
+  [
+   "2026-10-04T12:34:56-00:00",
+   "2026-10-04T12:34:56Z 1791117296000"
+  ],
+  [
+   "2026-10-04T12:34:56.789Z",
+   "2026-10-04T12:34:56Z 1791117296789"
+  ],
+  [
+   "2026-10-04T12:34:56.789123456789Z",
+   "2026-10-04T12:34:56Z 1791117296789"
+  ],
+  [
+   "2026-10-04T12:34:56.1+05:45",
+   "2026-10-04T12:34:56+05:45 1791096596100"
+  ],
+  [
+   "2026-10-04T12:34:56,789Z",
+   "2026-10-04T12:34:56Z 1791117296789"
+  ],
+  [
+   "2026-10-04T12:34:56.Z",
+   "zero"
+  ],
+  [
+   "2026-10-04T12:34:56.",
+   "zero"
+  ],
+  [
+   "2026-10-04T12:34:56",
+   "zero"
+  ],
+  [
+   "2026-10-04",
+   "zero"
+  ],
+  [
+   "2026-10-04T12:34Z",
+   "zero"
+  ],
+  [
+   "2026-10-04T12:34:56z",
+   "zero"
+  ],
+  [
+   "2026-10-04t12:34:56Z",
+   "zero"
+  ],
+  [
+   "2026-10-04 12:34:56Z",
+   "zero"
+  ],
+  [
+   "2026-10-04T5:04:05Z",
+   "2026-10-04T05:04:05Z 1791090245000"
+  ],
+  [
+   "2026-10-04T05:4:05Z",
+   "zero"
+  ],
+  [
+   "2026-10-04T05:04:5Z",
+   "zero"
+  ],
+  [
+   "2026-10-4T05:04:05Z",
+   "zero"
+  ],
+  [
+   "2026-1-04T05:04:05Z",
+   "zero"
+  ],
+  [
+   "26-10-04T05:04:05Z",
+   "zero"
+  ],
+  [
+   "02026-10-04T05:04:05Z",
+   "zero"
+  ],
+  [
+   "2026-13-04T05:04:05Z",
+   "zero"
+  ],
+  [
+   "2026-00-04T05:04:05Z",
+   "zero"
+  ],
+  [
+   "2026-10-32T05:04:05Z",
+   "zero"
+  ],
+  [
+   "2026-10-00T05:04:05Z",
+   "zero"
+  ],
+  [
+   "2026-02-29T05:04:05Z",
+   "zero"
+  ],
+  [
+   "2024-02-29T05:04:05Z",
+   "2024-02-29T05:04:05Z 1709183045000"
+  ],
+  [
+   "2100-02-29T05:04:05Z",
+   "zero"
+  ],
+  [
+   "2000-02-29T05:04:05Z",
+   "2000-02-29T05:04:05Z 951800645000"
+  ],
+  [
+   "2026-04-31T05:04:05Z",
+   "zero"
+  ],
+  [
+   "2026-10-04T24:00:00Z",
+   "zero"
+  ],
+  [
+   "2026-10-04T23:60:00Z",
+   "zero"
+  ],
+  [
+   "2026-10-04T23:59:60Z",
+   "zero"
+  ],
+  [
+   "2026-10-04T23:59:59Z",
+   "2026-10-04T23:59:59Z 1791158399000"
+  ],
+  [
+   "2026-10-04T12:34:56+24:00",
+   "2026-10-04T12:34:56+24:00 1791030896000"
+  ],
+  [
+   "2026-10-04T12:34:56+25:00",
+   "2026-10-04T12:34:56+25:00 1791027296000"
+  ],
+  [
+   "2026-10-04T12:34:56+23:60",
+   "2026-10-04T12:34:56+24:00 1791030896000"
+  ],
+  [
+   "2026-10-04T12:34:56+23:61",
+   "2026-10-04T12:34:56+24:01 1791030836000"
+  ],
+  [
+   "2026-10-04T12:34:56+0200",
+   "zero"
+  ],
+  [
+   "2026-10-04T12:34:56+02",
+   "zero"
+  ],
+  [
+   "2026-10-04T12:34:56 +02:00",
+   "zero"
+  ],
+  [
+   "2026-10-04T12:34:56+2:00",
+   "zero"
+  ],
+  [
+   "2026-10-04T12:34:56+02:0",
+   "zero"
+  ],
+  [
+   "2026-10-04T12:34:56+02:00:00",
+   "zero"
+  ],
+  [
+   "2026-10-04T12:34:56Z ",
+   "zero"
+  ],
+  [
+   " 2026-10-04T12:34:56Z",
+   "zero"
+  ],
+  [
+   "2026-10-04T12:34:56ZZ",
+   "zero"
+  ],
+  [
+   "2026-10-04T12:34:56+02:00Z",
+   "zero"
+  ],
+  [
+   "2026-10-04T12:34:56Z+02:00",
+   "zero"
+  ],
+  [
+   "0001-01-01T00:00:00Z",
+   "zero"
+  ],
+  [
+   "0001-01-01T01:00:00+01:00",
+   "zero"
+  ],
+  [
+   "0000-01-01T00:00:00Z",
+   "0000-01-01T00:00:00Z -62167219200000"
+  ],
+  [
+   "0000-12-31T23:59:59Z",
+   "0000-12-31T23:59:59Z -62135596801000"
+  ],
+  [
+   "9999-12-31T23:59:59Z",
+   "9999-12-31T23:59:59Z 253402300799000"
+  ],
+  [
+   "9999-12-31T23:59:59-23:59",
+   "9999-12-31T23:59:59-23:59 253402387139000"
+  ],
+  [
+   "1970-01-01T00:00:00Z",
+   "1970-01-01T00:00:00Z 0"
+  ],
+  [
+   "1969-12-31T23:59:59Z",
+   "1969-12-31T23:59:59Z -1000"
+  ],
+  [
+   "1900-01-01T00:00:00+09:00",
+   "1900-01-01T00:00:00+09:00 -2209021200000"
+  ],
+  [
+   "2026-10-04T12:34:56.123+02:00",
+   "2026-10-04T12:34:56+02:00 1791110096123"
+  ],
+  [
+   "2026-10-04T00:00:00.000Z",
+   "2026-10-04T00:00:00Z 1791072000000"
+  ],
+  [
+   "2026-10-04T12:34:56.999999999Z",
+   "2026-10-04T12:34:56Z 1791117296999"
+  ],
+  [
+   "2026-10-04T12:34:56.0000000001Z",
+   "2026-10-04T12:34:56Z 1791117296000"
+  ],
+  [
+   "2026-10-04T12:34:56+05:30",
+   "2026-10-04T12:34:56+05:30 1791097496000"
+  ],
+  [
+   "2026-10-04T12:34:56-12:00",
+   "2026-10-04T12:34:56-12:00 1791160496000"
+  ],
+  [
+   "2026-10-04T12:34:56+14:00",
+   "2026-10-04T12:34:56+14:00 1791066896000"
+  ],
+  [
+   "2026-10-04T00:00:00+05:45",
+   "2026-10-04T00:00:00+05:45 1791051300000"
+  ],
+  [
+   "２０２６-10-04T12:34:56Z",
+   "zero"
+  ],
+  [
+   "2026-10-04T12:34:56Z\n",
+   "zero"
+  ],
+  [
+   "",
+   "zero"
+  ],
+  [
+   " ",
+   "zero"
+  ],
+  [
+   "T",
+   "zero"
+  ],
+  [
+   "Z",
+   "zero"
+  ],
+  [
+   "2026-10-04T12:34:56.5Z",
+   "2026-10-04T12:34:56Z 1791117296500"
+  ],
+  [
+   "2026-10-04T12:34:56.50Z",
+   "2026-10-04T12:34:56Z 1791117296500"
+  ],
+  [
+   "2026-10-04T12:34:56.-5Z",
+   "zero"
+  ],
+  [
+   "2026-10-04T12:34:56.+5Z",
+   "zero"
+  ],
+  [
+   "+026-10-04T12:34:56Z",
+   "zero"
+  ],
+  [
+   "-026-10-04T12:34:56Z",
+   "zero"
+  ],
+  [
+   "2026-10-04T12:34:56+02:00.5",
+   "zero"
+  ],
+  [
+   "2026-10-04T0:00:00Z",
+   "2026-10-04T00:00:00Z 1791072000000"
+  ],
+  [
+   "2026-10-04T00:0:0Z",
+   "zero"
+  ],
+  [
+   "2026-10-04T123:00:00Z",
+   "zero"
+  ]
+ ],
+ "spaces": [
+  9,
+  10,
+  11,
+  12,
+  13,
+  32,
+  133,
+  160,
+  5760,
+  8192,
+  8193,
+  8194,
+  8195,
+  8196,
+  8197,
+  8198,
+  8199,
+  8200,
+  8201,
+  8202,
+  8232,
+  8233,
+  8239,
+  8287,
+  12288,
+  5760,
+  8232,
+  8233
+ ],
+ "keys": {
+  "rsa-spki": {
+   "public": "ok",
+   "private": "refused"
+  },
+  "rsa-pkcs1-public": {
+   "public": "ok",
+   "private": "refused"
+  },
+  "rsa-pkcs8-private": {
+   "public": "refused",
+   "private": "ok"
+  },
+  "rsa-pkcs1-private": {
+   "public": "refused",
+   "private": "ok"
+  },
+  "ec-spki": {
+   "public": "refused",
+   "private": "refused"
+  },
+  "ec-pkcs8-private": {
+   "public": "refused",
+   "private": "refused"
+  },
+  "ed25519-spki": {
+   "public": "refused",
+   "private": "refused"
+  },
+  "ed25519-pkcs8-private": {
+   "public": "refused",
+   "private": "refused"
+  },
+  "rsa-pss-spki": {
+   "public": "refused",
+   "private": "refused"
+  },
+  "rsa-pss-pkcs8-private": {
+   "public": "refused",
+   "private": "refused"
+  },
+  "rsa-512-spki": {
+   "public": "ok",
+   "private": "refused"
+  },
+  "rsa-512-pkcs8-private": {
+   "public": "refused",
+   "private": "ok"
+  },
+  "rsa-e3-spki": {
+   "public": "ok",
+   "private": "refused"
+  },
+  "certificate-rsa": {
+   "public": "ok",
+   "private": "refused"
+  },
+  "certificate-ec": {
+   "public": "refused",
+   "private": "refused"
+  },
+  "pkcs1-public-under-PUBLIC-KEY": {
+   "public": "ok",
+   "private": "refused"
+  },
+  "spki-under-RSA-PUBLIC-KEY": {
+   "public": "ok",
+   "private": "refused"
+  },
+  "spki-under-CERTIFICATE": {
+   "public": "ok",
+   "private": "refused"
+  },
+  "spki-under-a-made-up-label": {
+   "public": "ok",
+   "private": "refused"
+  },
+  "pkcs8-private-under-PUBLIC-KEY": {
+   "public": "refused",
+   "private": "ok"
+  },
+  "pkcs1-private-under-RSA-PUBLIC-KEY": {
+   "public": "refused",
+   "private": "ok"
+  },
+  "pkcs1-private-under-PUBLIC-KEY": {
+   "public": "refused",
+   "private": "ok"
+  },
+  "pkcs1-public-under-PRIVATE-KEY": {
+   "public": "ok",
+   "private": "refused"
+  },
+  "pkcs8-private-under-RSA-PRIVATE-KEY": {
+   "public": "refused",
+   "private": "ok"
+  },
+  "pkcs1-private-under-PRIVATE-KEY": {
+   "public": "refused",
+   "private": "ok"
+  },
+  "leading-text": {
+   "public": "ok",
+   "private": "refused"
+  },
+  "trailing-text": {
+   "public": "ok",
+   "private": "refused"
+  },
+  "crlf-line-endings": {
+   "public": "ok",
+   "private": "refused"
+  },
+  "indented-begin": {
+   "public": "refused",
+   "private": "refused"
+  },
+  "begin-not-at-line-start": {
+   "public": "refused",
+   "private": "refused"
+  },
+  "no-trailing-newline": {
+   "public": "ok",
+   "private": "refused"
+  },
+  "blank-lines-around": {
+   "public": "ok",
+   "private": "refused"
+  },
+  "spaces-and-tabs-in-body": {
+   "public": "ok",
+   "private": "refused"
+  },
+  "one-long-line-body": {
+   "public": "ok",
+   "private": "refused"
+  },
+  "body-on-the-begin-line": {
+   "public": "refused",
+   "private": "refused"
+  },
+  "trailing-spaces-after-end": {
+   "public": "ok",
+   "private": "refused"
+  },
+  "text-after-end-on-its-line": {
+   "public": "refused",
+   "private": "refused"
+  },
+  "garbage": {
+   "public": "refused",
+   "private": "refused"
+  },
+  "empty": {
+   "public": "refused",
+   "private": "refused"
+  },
+  "whitespace-only": {
+   "public": "refused",
+   "private": "refused"
+  },
+  "empty-body": {
+   "public": "refused",
+   "private": "refused"
+  },
+  "bad-base64-character": {
+   "public": "refused",
+   "private": "refused"
+  },
+  "unpadded-base64": {
+   "public": "refused",
+   "private": "refused"
+  },
+  "truncated-der": {
+   "public": "refused",
+   "private": "refused"
+  },
+  "missing-end": {
+   "public": "refused",
+   "private": "refused"
+  },
+  "mismatched-end-label": {
+   "public": "refused",
+   "private": "refused"
+  },
+  "proc-type-header": {
+   "public": "ok",
+   "private": "refused"
+  },
+  "garbage-block-then-the-key": {
+   "public": "ok",
+   "private": "refused"
+  },
+  "valid-ec-block-then-the-rsa-key": {
+   "public": "refused",
+   "private": "refused"
+  },
+  "two-keys": {
+   "public": "ok",
+   "private": "refused"
+  },
+  "private-then-public": {
+   "public": "refused",
+   "private": "ok"
+  },
+  "literal-backslash-n-one-line": {
+   "public": "refused",
+   "private": "refused"
+  }
+ }
+}

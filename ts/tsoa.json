@@ -1,0 +1,16 @@
+{
+  "entryFile": "src/server.ts",
+  "noImplicitAdditionalProperties": "throw-on-extras",
+  "controllerPathGlobs": ["src/controllers/**/*.controller.ts"],
+  "spec": {
+    "outputDirectory": "src/generated",
+    "specVersion": 3,
+    "name": "Auth Service API",
+    "description": "The SpaceTraders game credential and the fleet's token verifier. Public routes only: the internal /auth/v1/* routes are documented as they are ported.",
+    "basePath": "/"
+  },
+  "routes": {
+    "routesDir": "src/generated",
+    "basePath": "/"
+  }
+}

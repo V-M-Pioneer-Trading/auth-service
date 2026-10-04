@@ -1,0 +1,2 @@
+# Listed cases that pass against the TypeScript service for a vacuous reason (they assert an absence that holds
+# whether or not the route exists). Exact full names. Nothing else on the skip list may pass: none today.
