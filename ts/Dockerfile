@@ -5,7 +5,7 @@
 # `npm ci --ignore-scripts` everywhere: no dependency's install script runs.
 
 # Build: full dependencies, tsoa codegen, tsc.
-FROM node:24-slim@sha256:0e0ff40c39bc087845bfb27465a0df4ea419520094bc35842ff83dd8cbe6f9b6 AS build
+FROM node:26-slim@sha256:ec7758ee051e457b468b32bde57b0879010b325bb9862718e9615225ce4aaae1 AS build
 WORKDIR /app
 COPY package.json package-lock.json ./
 RUN npm ci --ignore-scripts
@@ -19,7 +19,7 @@ RUN npm run build
 # bytes: node:sqlite is built in, so a native addon here is a dependency that should not be), and then the packages
 # nothing loads removed: @tsoa/runtime declares @hapi/* for its hapi adapter and @types/* for its typings, and a test
 # (runtimeTree.test.ts) boots dist/server.js and fails if either is required.
-FROM node:24-slim@sha256:0e0ff40c39bc087845bfb27465a0df4ea419520094bc35842ff83dd8cbe6f9b6 AS deps
+FROM node:26-slim@sha256:ec7758ee051e457b468b32bde57b0879010b325bb9862718e9615225ce4aaae1 AS deps
 WORKDIR /app
 COPY package.json package-lock.json ./
 COPY scripts/find-native.cjs ./scripts/find-native.cjs
