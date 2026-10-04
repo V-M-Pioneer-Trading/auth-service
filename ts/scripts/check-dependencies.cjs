@@ -236,10 +236,26 @@ function check(pkg, lock, allowlistText, snapshotText, opts = {}) {
     }
     const installedAs = entry.name ?? pathName;
     const tarball = TARBALLS[installedAs];
-    const isRelease = tarball !== undefined && tarball.url.test(resolved);
-    if (isRelease) {
-      // The release URL is for its package alone, and only where the manifest asked for it.
-      if (where !== `node_modules/${installedAs}`) problems.push(`package-lock.json: ${where} resolves from the ${installedAs} release tarball but is not at the top level`);
+    const releaseMatch = tarball === undefined ? null : tarball.url.exec(resolved);
+    const topLevel = where === `node_modules/${installedAs}`;
+    if (tarball !== undefined && topLevel && releaseMatch === null) {
+      // The manifest names this package by its release URL, so its lock entry must be that release too.
+      problems.push(`package-lock.json: ${where} must resolve from the ${installedAs} release tarball package.json names, not ${resolved}`);
+    } else if (releaseMatch !== null) {
+      // The release URL is for its package alone, at the top level, and exactly the one package.json names: npm ci
+      // fetches package.json's URL and does not check the lockfile's integrity against it when the two URLs differ,
+      // so a lockfile-only edit of `resolved` (another tag of the same repository) would void the pin silently.
+      if (!topLevel) problems.push(`package-lock.json: ${where} resolves from the ${installedAs} release tarball but is not at the top level`);
+      const spec = pkg[tarball.section]?.[installedAs];
+      if (resolved !== spec) {
+        problems.push(`package-lock.json: ${where} resolves from ${resolved}, which is not the URL package.json's ${tarball.section} names for ${installedAs} (${spec ?? "none"})`);
+      }
+      if (entry.version !== releaseMatch[1]) {
+        problems.push(`package-lock.json: ${where} is version ${JSON.stringify(entry.version)} but resolves from the v${releaseMatch[1]} release tarball`);
+      }
+    } else if (/^https:\/\/github\.com\/[^/]+\/[^/]+\/releases\/download\//i.test(resolved)) {
+      // Any other release asset, whoever's: only the named tarball above is admitted.
+      problems.push(`package-lock.json: ${where} resolves from a GitHub release asset (${resolved}); only ${Object.keys(TARBALLS).join(", ")} may`);
     } else if (!resolved.startsWith("https://registry.npmjs.org/")) {
       problems.push(`package-lock.json: ${where} resolves from ${resolved}, which is neither registry.npmjs.org nor an admitted release tarball`);
     } else if (typeof entry.version !== "string" || !SEMVER_VERSION.test(entry.version)) {

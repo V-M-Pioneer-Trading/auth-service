@@ -3,7 +3,7 @@
   // tsconfig.build.json, which narrows this to the non-test sources.
   "compilerOptions": {
     "target": "ES2022",
-    "lib": ["ES2023"],
+    "lib": ["ES2024"],
     "module": "commonjs",
     "moduleResolution": "node",
     "esModuleInterop": true,

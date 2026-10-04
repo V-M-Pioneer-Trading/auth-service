@@ -5,3 +5,4 @@ openapi.json -text
 # Written by the Go image's db package; compared byte for byte by its sha256 in fixtures/SOURCE.txt.
 src/__tests__/fixtures/go-written.db binary
 src/__tests__/fixtures/go-verdicts.json -text
+src/__tests__/fixtures/introspection.json -text

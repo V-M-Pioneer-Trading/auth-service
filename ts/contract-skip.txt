@@ -1,7 +1,9 @@
 # Contract cases the TypeScript service does not pass yet: every case of a route that is not ported.
-# Step 7a ports the health and status routes, CORS, the router table and the startup refusals; what is
-# listed below arrives with 7b (introspection), 7c (the vault: GET /auth/v1/token, register, restore, the poller,
-# the Clerk session gate) and 7d (machine tokens). The list shrinks with each of those PRs and is empty after 7d.
+# Step 7a ported the health and status routes, CORS, the router table and the startup refusals; 7b ported
+# POST /auth/v1/introspect (every introspection case, the fixture included, is off this list). What is listed below
+# arrives with 7c (the vault: GET /auth/v1/token, register, restore, the poller, the Clerk session gate) and 7d
+# (machine tokens). The list shrinks with each of those PRs and is empty after 7d. A case of a describe that is
+# partly ported is listed by its full name.
 #
 # One JavaScript regular expression per line, handed to the judge in scripts/run-contract.cjs, matched like
 # `node --test --test-skip-pattern`: against the test's name with its enclosing describe names in front, joined by
@@ -11,60 +13,6 @@
 #
 # scripts/run-contract.cjs refuses a run whose numbers do not match contract-skip.expected.
 
-^every fixture case, answered by the center operator-on-public-get \[active\]$
-^every fixture case, answered by the center inactive-token-on-public-get \[inactive\]$
-^every fixture case, answered by the center inactive-token-on-guarded-route \[inactive\]$
-^every fixture case, answered by the center session-route-with-inactive-token \[inactive\]$
-^every fixture case, answered by the center session-route-with-scopeless-token \[active\]$
-^every fixture case, answered by the center session-route-with-token-lacking-scope-key \[activeNoScopeKey\]$
-^every fixture case, answered by the center scoped-route-with-token-lacking-scope-key \[activeNoScopeKey\]$
-^every fixture case, answered by the center active-with-required-scope \[active\]$
-^every fixture case, answered by the center active-without-required-scope \[active\]$
-^every fixture case, answered by the center active-with-multi-value-scope \[active\]$
-^every fixture case, answered by the center active-with-irregular-scope-whitespace \[active\]$
-^every fixture case, answered by the center active-with-only-spaces-in-scope \[active\]$
-^every fixture case, answered by the center scope-joined-by-several-spaces \[active\]$
-^every fixture case, answered by the center scope-joined-by-tab \[active\]$
-^every fixture case, answered by the center scope-joined-by-no-break-space \[active\]$
-^every fixture case, answered by the center scope-joined-by-em-space \[active\]$
-^every fixture case, answered by the center scope-joined-by-vertical-tab \[active\]$
-^every fixture case, answered by the center scope-joined-by-form-feed \[active\]$
-^every fixture case, answered by the center active-with-non-separators-in-scope \[active\]$
-^every fixture case, answered by the center active-machine-kind \[active\]$
-^every fixture case, answered by the center kind-disagrees-with-sub-prefix \[active\]$
-^every fixture case, answered by the center center-rejects-our-caller-secret \[callerSecret\]$
-^every fixture case, answered by the center center-returns-duplicate-key \[ambiguousKeys\]$
-^every fixture case, answered by the center center-returns-case-variant-duplicate-key \[ambiguousKeys\]$
-^every fixture case, answered by the center center-returns-contract-key-in-another-case \[ambiguousKeys\]$
-^every fixture case, answered by the center active-with-scope-that-is-a-prefix-of-required \[active\]$
-^every fixture case, answered by the center active-with-scope-differing-only-in-case \[active\]$
-^every fixture case, answered by the center head-on-guarded-route-with-valid-token \[active\]$
-^every fixture case, answered by the center lowercase-bearer-scheme \[active\]$
-^every fixture case, answered by the center gateway-active-operator \[active\]$
-^every fixture case, answered by the center gateway-active-operator-lacking-scope-key \[activeNoScopeKey\]$
-^every fixture case, answered by the center gateway-active-machine \[active\]$
-^every fixture case, answered by the center gateway-kind-machine-with-user-subject \[active\]$
-^every fixture case, answered by the center gateway-kind-operator-with-machine-subject \[active\]$
-^every fixture case, answered by the center gateway-inactive-token \[inactive\]$
-^every fixture case, answered by the center gateway-center-rejects-our-caller-secret \[callerSecret\]$
-^every fixture case, answered by the center gateway-center-returns-duplicate-key \[ambiguousKeys\]$
-^every fixture case, answered by the center gateway-center-returns-case-variant-duplicate-key \[ambiguousKeys\]$
-^the caller secret gate$
-^where the token travels ignores a token in the query string: a request with no token is \{active:false\}$
-^where the token travels ignores a query token even next to a body that carries a different, valid token$
-^where the token travels lets the body token fail even when the query token would have verified$
-^where the token travels accepts the form content type with a charset parameter$
-^where the token travels does not read a token out of a JSON body$
-^where the token travels does not read a form body that declares no content type$
-^where the token travels answers \{active:false\} when the form body is malformed anywhere, even if a valid token came first$
-^where the token travels answers \{active:false\} when the URL query is malformed or uses a semicolon, even with a valid body token$
-^where the token travels answers \{active:false\} when the body uses a semicolon anywhere, even next to a valid token$
-^where the token travels reads the FIRST of two X-Introspection-Secret headers \(a runtime that joins duplicates with a comma fails this\)$
-^where the token travels uses the first of several token parameters$
-^where the token travels answers inactive for an absent, empty or whitespace-only token$
-^the 8 KiB body cap$
-^what verifies, and what is \{active:false\}$
-^with CLERK_ISSUER set$
 ^the 10 s backoff after a failed mint$
 ^the mint timeout$
 ^a token past its exp$
@@ -86,8 +34,9 @@
 ^how upstream failures map to responses$
 ^OPTIONS and CORS carries CORS on handler responses of every status, and on none of the router's own 404/405/301$
 ^the M2M mint table is validated at startup has nothing to collide with when there is no introspection secret$
-^settings that leave the service running in a fail-closed state$
-^accepted spellings of keys$
+^settings that leave the service running in a fail-closed state without AUTH_INTROSPECTION_SECRET the route is mounted and rejects every caller, empty header included$
+^settings that leave the service running in a fail-closed state with no M2M callers configured the mint route rejects everyone and the rest works$
+^accepted spellings of keys DEV_M2M_SIGNING_KEY_FILE as PKCS#8 or PKCS#1 private key$
 ^log hygiene, production mode$
 ^GET /auth/v1/token rejects a wrong or missing shared secret with 403, the envelope and no-store$
 ^GET /auth/v1/token does not accept the introspection secret, a caller secret, or a Clerk session in place of the shared secret$

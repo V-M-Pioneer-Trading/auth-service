@@ -8,6 +8,8 @@ import { clerkTokensUrlFromEnv, ConfigError } from "../config";
 import { formatRfc3339, isZeroTime, parseRfc3339 } from "../goTime";
 import { goTrimSpace } from "../goText";
 import { parseRsaPrivateKey, parseRsaPublicKey, samePublicKey } from "../keys";
+import { parseMediaType, parseQuery } from "../http/goForm";
+import { MEDIA_TYPE_CASES, QUERY_CASES } from "../testSupport/formCases";
 import { keyCases } from "../testSupport/keyCases";
 import verdicts from "./fixtures/go-verdicts.json";
 
@@ -114,5 +116,38 @@ describe("golang-jwt's key readers: CLERK_JWT_KEY and DEV_M2M_SIGNING_KEY_FILE",
     expect(private1 !== null && public1 !== null && samePublicKey(private1, public1)).toBe(true);
     expect(private1 !== null && samePublicKey(private1, createPublicKey(private1))).toBe(true);
     expect(private1 !== null && samePublicKey(other, createPublicKey(private1))).toBe(false);
+  });
+});
+
+describe("mime.ParseMediaType: whether POST /auth/v1/introspect reads its body as a form, and whether it fails", () => {
+  it("has the verdicts of Go on every recorded input, and a recorded verdict for every case", () => {
+    const recorded = verdicts.mediaTypes as [string, { mediaType: string; failed: boolean }][];
+    expect(recorded.map(([input]) => input)).toEqual([...MEDIA_TYPE_CASES]);
+    const mismatches: string[] = [];
+    for (const [input, go] of recorded) {
+      const mine = parseMediaType(input);
+      if (mine.mediaType !== go.mediaType || mine.failed !== go.failed) {
+        mismatches.push(`${JSON.stringify(input)}: Go says ${JSON.stringify(go)}, this says ${JSON.stringify(mine)}`);
+      }
+    }
+    expect(mismatches).toEqual([]);
+  });
+});
+
+describe("url.ParseQuery: the form body and the URL query", () => {
+  const hex = (s: string): string => Buffer.from(s, "latin1").toString("hex");
+
+  it("has the verdicts of Go on every recorded input, and a recorded verdict for every case", () => {
+    const recorded = verdicts.queries as [string, { values: string[][]; failed: boolean }][];
+    expect(recorded.map(([input]) => input)).toEqual([...QUERY_CASES]);
+    const mismatches: string[] = [];
+    for (const [input, go] of recorded) {
+      const parsed = parseQuery(input);
+      // Go's sort.Strings orders by bytes; so does comparing the hex of latin1 strings.
+      const values = [...parsed.values.entries()].map(([k, vs]) => [hex(k), ...vs.map(hex)]).sort((a, b) => ((a[0] ?? "") < (b[0] ?? "") ? -1 : 1));
+      const mine = { values, failed: parsed.failed };
+      if (JSON.stringify(mine) !== JSON.stringify(go)) mismatches.push(`${JSON.stringify(input)}: Go says ${JSON.stringify(go)}, this says ${JSON.stringify(mine)}`);
+    }
+    expect(mismatches).toEqual([]);
   });
 });

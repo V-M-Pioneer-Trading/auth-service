@@ -1142,6 +1142,1135 @@
   "literal-backslash-n-one-line": {
    "public": "refused",
    "private": "refused"
+  },
+  "end-line-cr-at-end-of-input": {
+   "public": "refused",
+   "private": "refused"
+  },
+  "end-line-cr-then-space": {
+   "public": "refused",
+   "private": "refused"
+  },
+  "end-line-cr-then-tab": {
+   "public": "refused",
+   "private": "refused"
+  },
+  "end-line-space-then-crlf": {
+   "public": "ok",
+   "private": "refused"
+  },
+  "end-line-spaces-at-end-of-input": {
+   "public": "ok",
+   "private": "refused"
+  },
+  "end-line-tab-then-crlf": {
+   "public": "ok",
+   "private": "refused"
+  },
+  "end-line-two-crs": {
+   "public": "refused",
+   "private": "refused"
+  },
+  "pkcs1-private-indefinite-length": {
+   "public": "refused",
+   "private": "refused"
+  },
+  "pkcs1-private-outer-length-not-minimal": {
+   "public": "refused",
+   "private": "refused"
+  },
+  "pkcs1-public-exponent-length-not-minimal": {
+   "public": "refused",
+   "private": "refused"
+  },
+  "pkcs1-public-indefinite-length": {
+   "public": "refused",
+   "private": "refused"
+  },
+  "pkcs1-public-outer-length-not-minimal": {
+   "public": "refused",
+   "private": "refused"
+  },
+  "pkcs8-private-indefinite-length": {
+   "public": "refused",
+   "private": "refused"
+  },
+  "pkcs8-private-outer-length-not-minimal": {
+   "public": "refused",
+   "private": "refused"
+  },
+  "spki-algorithm-length-not-minimal": {
+   "public": "refused",
+   "private": "refused"
+  },
+  "spki-bit-string-length-not-minimal": {
+   "public": "refused",
+   "private": "refused"
+  },
+  "spki-indefinite-length": {
+   "public": "refused",
+   "private": "refused"
+  },
+  "spki-inner-key-length-not-minimal": {
+   "public": "refused",
+   "private": "refused"
+  },
+  "spki-outer-length-in-five-bytes": {
+   "public": "refused",
+   "private": "refused"
+  },
+  "spki-outer-length-not-minimal": {
+   "public": "refused",
+   "private": "refused"
   }
- }
+ },
+ "jwt": {
+  "note": "verifyToken of src/api/introspect.go (golang-jwt v5.3.1) at nowMs, by the case names of src/testSupport/jwtCases.ts; each value is the exact body writeIntrospection marshals",
+  "nowMs": 1791115200500,
+  "answers": {
+   "alg-HS256-keyed-with-the-public-pem": "{\"active\":false}",
+   "alg-PS256": "{\"active\":false}",
+   "alg-RS384": "{\"active\":false}",
+   "alg-RS512": "{\"active\":false}",
+   "alg-absent": "{\"active\":false}",
+   "alg-duplicate-last-is-RS256": "{\"active\":true,\"sub\":\"user_corpus\",\"scope\":\"agent:reset\",\"exp\":1791118800,\"kind\":\"operator\"}",
+   "alg-duplicate-last-is-none": "{\"active\":false}",
+   "alg-none": "{\"active\":false}",
+   "alg-number": "{\"active\":false}",
+   "alg-rs256-lowercase": "{\"active\":false}",
+   "alg-with-trailing-space": "{\"active\":false}",
+   "aud-iat-azp-typ-kid-unchecked": "{\"active\":true,\"sub\":\"user_corpus\",\"scope\":\"agent:reset\",\"exp\":1791118800,\"kind\":\"operator\"}",
+   "b64-false-without-crit": "{\"active\":true,\"sub\":\"user_corpus\",\"scope\":\"agent:reset\",\"exp\":1791118800,\"kind\":\"operator\"}",
+   "crit-a-string": "{\"active\":true,\"sub\":\"user_corpus\",\"scope\":\"agent:reset\",\"exp\":1791118800,\"kind\":\"operator\"}",
+   "crit-b64-false": "{\"active\":true,\"sub\":\"user_corpus\",\"scope\":\"agent:reset\",\"exp\":1791118800,\"kind\":\"operator\"}",
+   "crit-b64-true": "{\"active\":true,\"sub\":\"user_corpus\",\"scope\":\"agent:reset\",\"exp\":1791118800,\"kind\":\"operator\"}",
+   "crit-empty-array": "{\"active\":true,\"sub\":\"user_corpus\",\"scope\":\"agent:reset\",\"exp\":1791118800,\"kind\":\"operator\"}",
+   "crit-unknown-absent-parameter": "{\"active\":true,\"sub\":\"user_corpus\",\"scope\":\"agent:reset\",\"exp\":1791118800,\"kind\":\"operator\"}",
+   "crit-unknown-extension": "{\"active\":true,\"sub\":\"user_corpus\",\"scope\":\"agent:reset\",\"exp\":1791118800,\"kind\":\"operator\"}",
+   "empty-token": "{\"active\":false}",
+   "exp--1e300": "{\"active\":false}",
+   "exp--2^63": "{\"active\":false}",
+   "exp-1e18": "{\"active\":true,\"sub\":\"user_corpus\",\"scope\":\"agent:reset\",\"exp\":1000000000000000000,\"kind\":\"operator\"}",
+   "exp-1e19": "{\"active\":false}",
+   "exp-1e300": "{\"active\":false}",
+   "exp-2^53": "{\"active\":true,\"sub\":\"user_corpus\",\"scope\":\"agent:reset\",\"exp\":9007199254740992,\"kind\":\"operator\"}",
+   "exp-2^62": "{\"active\":true,\"sub\":\"user_corpus\",\"scope\":\"agent:reset\",\"exp\":4611686018427387904,\"kind\":\"operator\"}",
+   "exp-2^63": "{\"active\":false}",
+   "exp-absent": "{\"active\":false}",
+   "exp-array": "{\"active\":false}",
+   "exp-fraction-far-future": "{\"active\":true,\"sub\":\"user_corpus\",\"scope\":\"agent:reset\",\"exp\":1791118800,\"kind\":\"operator\"}",
+   "exp-largest-double-before-go-wraps": "{\"active\":true,\"sub\":\"user_corpus\",\"scope\":\"agent:reset\",\"exp\":9223371974719178752,\"kind\":\"operator\"}",
+   "exp-minus-30": "{\"active\":true,\"sub\":\"user_corpus\",\"scope\":\"agent:reset\",\"exp\":1791115170,\"kind\":\"operator\"}",
+   "exp-minus-58.1-truncates-to-minus-59": "{\"active\":true,\"sub\":\"user_corpus\",\"scope\":\"agent:reset\",\"exp\":1791115141,\"kind\":\"operator\"}",
+   "exp-minus-59-active": "{\"active\":true,\"sub\":\"user_corpus\",\"scope\":\"agent:reset\",\"exp\":1791115141,\"kind\":\"operator\"}",
+   "exp-minus-59.5-truncates-to-minus-60": "{\"active\":false}",
+   "exp-minus-60-inactive": "{\"active\":false}",
+   "exp-minus-61": "{\"active\":false}",
+   "exp-minus-90": "{\"active\":false}",
+   "exp-negative": "{\"active\":false}",
+   "exp-null": "{\"active\":false}",
+   "exp-object": "{\"active\":false}",
+   "exp-smallest-double-where-go-wraps": "{\"active\":false}",
+   "exp-string": "{\"active\":false}",
+   "exp-tiny-positive": "{\"active\":false}",
+   "exp-true": "{\"active\":false}",
+   "exp-written-1e-400-is-zero": "{\"active\":false}",
+   "exp-written-1e400-overflows": "{\"active\":false}",
+   "exp-written-negative-zero": "{\"active\":false}",
+   "exp-written-with-exponent": "{\"active\":true,\"sub\":\"user_x\",\"scope\":\"\",\"exp\":1791118800,\"kind\":\"operator\"}",
+   "exp-zero": "{\"active\":false}",
+   "extra-claims-do-not-leak": "{\"active\":true,\"sub\":\"user_corpus\",\"scope\":\"agent:reset\",\"exp\":1791118800,\"kind\":\"operator\"}",
+   "foreign-key": "{\"active\":false}",
+   "foreign-key-with-embedded-jwk": "{\"active\":false}",
+   "foreign-key-with-jku": "{\"active\":false}",
+   "foreign-key-with-x5u": "{\"active\":false}",
+   "four-segments": "{\"active\":false}",
+   "header-empty": "{\"active\":false}",
+   "header-json-array": "{\"active\":false}",
+   "header-json-null": "{\"active\":false}",
+   "header-not-json": "{\"active\":false}",
+   "header-segment-padded": "{\"active\":false}",
+   "header-segment-with-trailing-newline": "{\"active\":true,\"sub\":\"user_corpus\",\"scope\":\"agent:reset\",\"exp\":1791118800,\"kind\":\"operator\"}",
+   "header-trailing-garbage": "{\"active\":false}",
+   "header-with-bom": "{\"active\":false}",
+   "header-with-overflowing-number": "{\"active\":false}",
+   "header-without-typ": "{\"active\":true,\"sub\":\"user_corpus\",\"scope\":\"agent:reset\",\"exp\":1791118800,\"kind\":\"operator\"}",
+   "iat-absent": "{\"active\":true,\"sub\":\"user_corpus\",\"scope\":\"agent:reset\",\"exp\":1791118800,\"kind\":\"operator\"}",
+   "iat-future": "{\"active\":true,\"sub\":\"user_corpus\",\"scope\":\"agent:reset\",\"exp\":1791118800,\"kind\":\"operator\"}",
+   "iat-null": "{\"active\":true,\"sub\":\"user_corpus\",\"scope\":\"agent:reset\",\"exp\":1791118800,\"kind\":\"operator\"}",
+   "iat-string": "{\"active\":true,\"sub\":\"user_corpus\",\"scope\":\"agent:reset\",\"exp\":1791118800,\"kind\":\"operator\"}",
+   "iss-anything-when-unset": "{\"active\":true,\"sub\":\"user_corpus\",\"scope\":\"agent:reset\",\"exp\":1791118800,\"kind\":\"operator\"}",
+   "iss-number-when-unset": "{\"active\":true,\"sub\":\"user_corpus\",\"scope\":\"agent:reset\",\"exp\":1791118800,\"kind\":\"operator\"}",
+   "issuer-set-iss-absent": "{\"active\":false}",
+   "issuer-set-iss-array-holding-it": "{\"active\":false}",
+   "issuer-set-iss-case": "{\"active\":false}",
+   "issuer-set-iss-empty": "{\"active\":false}",
+   "issuer-set-iss-match": "{\"active\":true,\"sub\":\"user_corpus\",\"scope\":\"agent:reset\",\"exp\":1791118800,\"kind\":\"operator\"}",
+   "issuer-set-iss-null": "{\"active\":false}",
+   "issuer-set-iss-number": "{\"active\":false}",
+   "issuer-set-iss-other": "{\"active\":false}",
+   "issuer-set-iss-trailing-slash": "{\"active\":false}",
+   "key-4096-bit": "{\"active\":true,\"sub\":\"user_corpus\",\"scope\":\"agent:reset\",\"exp\":1791118800,\"kind\":\"operator\"}",
+   "key-with-exponent-3": "{\"active\":true,\"sub\":\"user_corpus\",\"scope\":\"agent:reset\",\"exp\":1791118800,\"kind\":\"operator\"}",
+   "kind-of-sub-\" user_x\"": "{\"active\":true,\"sub\":\" user_x\",\"scope\":\"agent:reset\",\"exp\":1791118800,\"kind\":\"machine\"}",
+   "kind-of-sub-\"USER_x\"": "{\"active\":true,\"sub\":\"USER_x\",\"scope\":\"agent:reset\",\"exp\":1791118800,\"kind\":\"machine\"}",
+   "kind-of-sub-\"mch_ \"": "{\"active\":true,\"sub\":\"mch_\\u2028\",\"scope\":\"agent:reset\",\"exp\":1791118800,\"kind\":\"machine\"}",
+   "kind-of-sub-\"user\"": "{\"active\":true,\"sub\":\"user\",\"scope\":\"agent:reset\",\"exp\":1791118800,\"kind\":\"machine\"}",
+   "kind-of-sub-\"user_\"": "{\"active\":true,\"sub\":\"user_\",\"scope\":\"agent:reset\",\"exp\":1791118800,\"kind\":\"operator\"}",
+   "kind-of-sub-\"user_é\"": "{\"active\":true,\"sub\":\"user_é\",\"scope\":\"agent:reset\",\"exp\":1791118800,\"kind\":\"operator\"}",
+   "kind-of-sub-\"usr_x\"": "{\"active\":true,\"sub\":\"usr_x\",\"scope\":\"agent:reset\",\"exp\":1791118800,\"kind\":\"machine\"}",
+   "kind-of-sub-\"x\"": "{\"active\":true,\"sub\":\"x\",\"scope\":\"agent:reset\",\"exp\":1791118800,\"kind\":\"machine\"}",
+   "leading-space": "{\"active\":false}",
+   "nbf-1e300": "{\"active\":true,\"sub\":\"user_corpus\",\"scope\":\"agent:reset\",\"exp\":1791118800,\"kind\":\"operator\"}",
+   "nbf-negative": "{\"active\":true,\"sub\":\"user_corpus\",\"scope\":\"agent:reset\",\"exp\":1791118800,\"kind\":\"operator\"}",
+   "nbf-null": "{\"active\":false}",
+   "nbf-past": "{\"active\":true,\"sub\":\"user_corpus\",\"scope\":\"agent:reset\",\"exp\":1791118800,\"kind\":\"operator\"}",
+   "nbf-plus-120": "{\"active\":false}",
+   "nbf-plus-30": "{\"active\":true,\"sub\":\"user_corpus\",\"scope\":\"agent:reset\",\"exp\":1791118800,\"kind\":\"operator\"}",
+   "nbf-plus-59.5": "{\"active\":true,\"sub\":\"user_corpus\",\"scope\":\"agent:reset\",\"exp\":1791118800,\"kind\":\"operator\"}",
+   "nbf-plus-60": "{\"active\":true,\"sub\":\"user_corpus\",\"scope\":\"agent:reset\",\"exp\":1791118800,\"kind\":\"operator\"}",
+   "nbf-plus-60.5": "{\"active\":true,\"sub\":\"user_corpus\",\"scope\":\"agent:reset\",\"exp\":1791118800,\"kind\":\"operator\"}",
+   "nbf-plus-61": "{\"active\":false}",
+   "nbf-string": "{\"active\":false}",
+   "nbf-written-1e400-overflows": "{\"active\":false}",
+   "nbf-zero": "{\"active\":true,\"sub\":\"user_corpus\",\"scope\":\"agent:reset\",\"exp\":1791118800,\"kind\":\"operator\"}",
+   "one-segment": "{\"active\":false}",
+   "only-dots": "{\"active\":false}",
+   "own-key-with-embedded-foreign-jwk": "{\"active\":true,\"sub\":\"user_corpus\",\"scope\":\"agent:reset\",\"exp\":1791118800,\"kind\":\"operator\"}",
+   "payload-control-character-in-string": "{\"active\":false}",
+   "payload-deeply-nested": "{\"active\":true,\"sub\":\"user_x\",\"scope\":\"\",\"exp\":1791118800,\"kind\":\"operator\"}",
+   "payload-duplicate-exp-last-wins-expired": "{\"active\":false}",
+   "payload-duplicate-sub-last-wins": "{\"active\":true,\"sub\":\"mch_last\",\"scope\":\"\",\"exp\":1791118800,\"kind\":\"machine\"}",
+   "payload-empty": "{\"active\":false}",
+   "payload-invalid-utf8-in-sub": "{\"active\":true,\"sub\":\"user_��\",\"scope\":\"\",\"exp\":1791118800,\"kind\":\"operator\"}",
+   "payload-json-array": "{\"active\":false}",
+   "payload-json-null": "{\"active\":false}",
+   "payload-json-string": "{\"active\":false}",
+   "payload-not-json": "{\"active\":false}",
+   "payload-proto-key": "{\"active\":false}",
+   "payload-segment-length-1-mod-4": "{\"active\":false}",
+   "payload-segment-non-ascii": "{\"active\":false}",
+   "payload-segment-nonzero-trailing-bits": "{\"active\":true,\"sub\":\"user_corpus\",\"scope\":\"agent:reset\",\"exp\":1791118800,\"kind\":\"operator\"}",
+   "payload-segment-padded": "{\"active\":false}",
+   "payload-segment-standard-alphabet": "{\"active\":false}",
+   "payload-segment-with-crlf": "{\"active\":true,\"sub\":\"user_corpus\",\"scope\":\"agent:reset\",\"exp\":1791118800,\"kind\":\"operator\"}",
+   "payload-segment-with-form-feed": "{\"active\":false}",
+   "payload-segment-with-newline": "{\"active\":true,\"sub\":\"user_corpus\",\"scope\":\"agent:reset\",\"exp\":1791118800,\"kind\":\"operator\"}",
+   "payload-segment-with-space": "{\"active\":false}",
+   "payload-segment-with-tab": "{\"active\":false}",
+   "payload-sub-under-proto-and-own": "{\"active\":true,\"sub\":\"user_own\",\"scope\":\"\",\"exp\":1791118800,\"kind\":\"operator\"}",
+   "payload-surrounding-whitespace": "{\"active\":true,\"sub\":\"user_corpus\",\"scope\":\"agent:reset\",\"exp\":1791118800,\"kind\":\"operator\"}",
+   "payload-trailing-garbage": "{\"active\":false}",
+   "payload-with-bom": "{\"active\":false}",
+   "payload-with-just-past-largest-double": "{\"active\":false}",
+   "payload-with-largest-double": "{\"active\":true,\"sub\":\"user_x\",\"scope\":\"\",\"exp\":1791118800,\"kind\":\"operator\"}",
+   "payload-with-overflowing-number-in-another-claim": "{\"active\":false}",
+   "payload-with-underflowing-number": "{\"active\":true,\"sub\":\"user_x\",\"scope\":\"\",\"exp\":1791118800,\"kind\":\"operator\"}",
+   "scope-absent": "{\"active\":true,\"sub\":\"user_corpus\",\"scope\":\"\",\"exp\":1791118800,\"kind\":\"operator\"}",
+   "scope-array": "{\"active\":true,\"sub\":\"user_corpus\",\"scope\":\"a:b c:d\",\"exp\":1791118800,\"kind\":\"operator\"}",
+   "scope-array-of-strings-with-spaces": "{\"active\":true,\"sub\":\"user_corpus\",\"scope\":\"a b  c\",\"exp\":1791118800,\"kind\":\"operator\"}",
+   "scope-array-with-lone-surrogate": "{\"active\":true,\"sub\":\"user_x\",\"scope\":\"a �\",\"exp\":1791118800,\"kind\":\"operator\"}",
+   "scope-array-with-non-strings": "{\"active\":true,\"sub\":\"user_corpus\",\"scope\":\"a b\",\"exp\":1791118800,\"kind\":\"operator\"}",
+   "scope-empty-array": "{\"active\":true,\"sub\":\"user_corpus\",\"scope\":\"\",\"exp\":1791118800,\"kind\":\"operator\"}",
+   "scope-empty-string": "{\"active\":true,\"sub\":\"user_corpus\",\"scope\":\"\",\"exp\":1791118800,\"kind\":\"operator\"}",
+   "scope-irregular-whitespace": "{\"active\":true,\"sub\":\"user_corpus\",\"scope\":\"a  b\\tc \",\"exp\":1791118800,\"kind\":\"operator\"}",
+   "scope-leading-space": "{\"active\":true,\"sub\":\"user_corpus\",\"scope\":\" lead\",\"exp\":1791118800,\"kind\":\"operator\"}",
+   "scope-null": "{\"active\":true,\"sub\":\"user_corpus\",\"scope\":\"\",\"exp\":1791118800,\"kind\":\"operator\"}",
+   "scope-number": "{\"active\":true,\"sub\":\"user_corpus\",\"scope\":\"\",\"exp\":1791118800,\"kind\":\"operator\"}",
+   "scope-object": "{\"active\":true,\"sub\":\"user_corpus\",\"scope\":\"\",\"exp\":1791118800,\"kind\":\"operator\"}",
+   "scope-true": "{\"active\":true,\"sub\":\"user_corpus\",\"scope\":\"\",\"exp\":1791118800,\"kind\":\"operator\"}",
+   "scope-unicode": "{\"active\":true,\"sub\":\"user_corpus\",\"scope\":\"ünï:cøde\",\"exp\":1791118800,\"kind\":\"operator\"}",
+   "scope-vertical-tab-and-nbsp": "{\"active\":true,\"sub\":\"user_corpus\",\"scope\":\"a\\u000bb c\",\"exp\":1791118800,\"kind\":\"operator\"}",
+   "scope-with-lone-low-surrogate": "{\"active\":true,\"sub\":\"user_x\",\"scope\":\"a�b\",\"exp\":1791118800,\"kind\":\"operator\"}",
+   "signature-empty": "{\"active\":false}",
+   "signature-of-another-payload": "{\"active\":false}",
+   "signature-one-byte-short": "{\"active\":false}",
+   "signature-padded": "{\"active\":false}",
+   "signature-standard-alphabet": "{\"active\":false}",
+   "signature-with-a-leading-zero-byte": "{\"active\":false}",
+   "signature-with-newline": "{\"active\":true,\"sub\":\"user_corpus\",\"scope\":\"agent:reset\",\"exp\":1791118800,\"kind\":\"operator\"}",
+   "signed-with-main-judged-with-small": "{\"active\":false}",
+   "small-key-1024-bit": "{\"active\":true,\"sub\":\"user_corpus\",\"scope\":\"agent:reset\",\"exp\":1791118800,\"kind\":\"operator\"}",
+   "sub-absent": "{\"active\":false}",
+   "sub-array": "{\"active\":false}",
+   "sub-empty": "{\"active\":false}",
+   "sub-null": "{\"active\":false}",
+   "sub-number": "{\"active\":false}",
+   "sub-object": "{\"active\":false}",
+   "sub-true": "{\"active\":false}",
+   "sub-with-escaped-key": "{\"active\":true,\"sub\":\"user_escaped_key\",\"scope\":\"\",\"exp\":1791118800,\"kind\":\"operator\"}",
+   "sub-with-lone-surrogate-escape": "{\"active\":true,\"sub\":\"user_�x\",\"scope\":\"s\",\"exp\":1791118800,\"kind\":\"operator\"}",
+   "sub-with-surrogate-pair-escape": "{\"active\":true,\"sub\":\"user_😀\",\"scope\":\"s\",\"exp\":1791118800,\"kind\":\"operator\"}",
+   "trailing-dot": "{\"active\":false}",
+   "trailing-newline": "{\"active\":true,\"sub\":\"user_corpus\",\"scope\":\"agent:reset\",\"exp\":1791118800,\"kind\":\"operator\"}",
+   "trailing-space": "{\"active\":false}",
+   "two-segments": "{\"active\":false}",
+   "valid-machine": "{\"active\":true,\"sub\":\"mch_corpus\",\"scope\":\"agent:reset\",\"exp\":1791118800,\"kind\":\"machine\"}",
+   "valid-operator": "{\"active\":true,\"sub\":\"user_corpus\",\"scope\":\"agent:reset\",\"exp\":1791118800,\"kind\":\"operator\"}"
+  }
+ },
+ "mediaTypes": [
+  [
+   "",
+   {
+    "mediaType": "",
+    "failed": true
+   }
+  ],
+  [
+   "application/octet-stream",
+   {
+    "mediaType": "application/octet-stream",
+    "failed": false
+   }
+  ],
+  [
+   "application/x-www-form-urlencoded",
+   {
+    "mediaType": "application/x-www-form-urlencoded",
+    "failed": false
+   }
+  ],
+  [
+   "Application/X-WWW-Form-Urlencoded",
+   {
+    "mediaType": "application/x-www-form-urlencoded",
+    "failed": false
+   }
+  ],
+  [
+   "APPLICATION/X-WWW-FORM-URLENCODED",
+   {
+    "mediaType": "application/x-www-form-urlencoded",
+    "failed": false
+   }
+  ],
+  [
+   " application/x-www-form-urlencoded ",
+   {
+    "mediaType": "application/x-www-form-urlencoded",
+    "failed": false
+   }
+  ],
+  [
+   "\tapplication/x-www-form-urlencoded\t",
+   {
+    "mediaType": "application/x-www-form-urlencoded",
+    "failed": false
+   }
+  ],
+  [
+   "application/x-www-form-urlencoded;",
+   {
+    "mediaType": "application/x-www-form-urlencoded",
+    "failed": false
+   }
+  ],
+  [
+   "application/x-www-form-urlencoded; ;",
+   {
+    "mediaType": "application/x-www-form-urlencoded",
+    "failed": true
+   }
+  ],
+  [
+   "application/x-www-form-urlencoded;;",
+   {
+    "mediaType": "application/x-www-form-urlencoded",
+    "failed": true
+   }
+  ],
+  [
+   "application/x-www-form-urlencoded; charset=UTF-8",
+   {
+    "mediaType": "application/x-www-form-urlencoded",
+    "failed": false
+   }
+  ],
+  [
+   "application/x-www-form-urlencoded;charset=utf-8",
+   {
+    "mediaType": "application/x-www-form-urlencoded",
+    "failed": false
+   }
+  ],
+  [
+   "application/x-www-form-urlencoded;charset=utf-8;",
+   {
+    "mediaType": "application/x-www-form-urlencoded",
+    "failed": false
+   }
+  ],
+  [
+   "application/x-www-form-urlencoded; charset=utf-8 ;",
+   {
+    "mediaType": "application/x-www-form-urlencoded",
+    "failed": false
+   }
+  ],
+  [
+   "application/x-www-form-urlencoded; charset=utf-8; ",
+   {
+    "mediaType": "application/x-www-form-urlencoded",
+    "failed": false
+   }
+  ],
+  [
+   "application/x-www-form-urlencoded; charset",
+   {
+    "mediaType": "application/x-www-form-urlencoded",
+    "failed": true
+   }
+  ],
+  [
+   "application/x-www-form-urlencoded; charset=",
+   {
+    "mediaType": "application/x-www-form-urlencoded",
+    "failed": true
+   }
+  ],
+  [
+   "application/x-www-form-urlencoded; charset = utf-8",
+   {
+    "mediaType": "application/x-www-form-urlencoded",
+    "failed": false
+   }
+  ],
+  [
+   "application/x-www-form-urlencoded; charset=\"utf-8\"",
+   {
+    "mediaType": "application/x-www-form-urlencoded",
+    "failed": false
+   }
+  ],
+  [
+   "application/x-www-form-urlencoded; charset=\"\"",
+   {
+    "mediaType": "application/x-www-form-urlencoded",
+    "failed": false
+   }
+  ],
+  [
+   "application/x-www-form-urlencoded; charset=\"unterminated",
+   {
+    "mediaType": "application/x-www-form-urlencoded",
+    "failed": true
+   }
+  ],
+  [
+   "application/x-www-form-urlencoded; x=\"a\\\"b\"",
+   {
+    "mediaType": "application/x-www-form-urlencoded",
+    "failed": false
+   }
+  ],
+  [
+   "application/x-www-form-urlencoded; x=\"a\\b\"",
+   {
+    "mediaType": "application/x-www-form-urlencoded",
+    "failed": false
+   }
+  ],
+  [
+   "application/x-www-form-urlencoded; x=\"a\rb\"",
+   {
+    "mediaType": "application/x-www-form-urlencoded",
+    "failed": true
+   }
+  ],
+  [
+   "application/x-www-form-urlencoded; x=\"a\nb\"",
+   {
+    "mediaType": "application/x-www-form-urlencoded",
+    "failed": true
+   }
+  ],
+  [
+   "application/x-www-form-urlencoded; a=1; a=1",
+   {
+    "mediaType": "application/x-www-form-urlencoded",
+    "failed": false
+   }
+  ],
+  [
+   "application/x-www-form-urlencoded; a=1; a=2",
+   {
+    "mediaType": "",
+    "failed": true
+   }
+  ],
+  [
+   "application/x-www-form-urlencoded; A=1; a=2",
+   {
+    "mediaType": "",
+    "failed": true
+   }
+  ],
+  [
+   "application/x-www-form-urlencoded; a*=1; a*=2",
+   {
+    "mediaType": "",
+    "failed": true
+   }
+  ],
+  [
+   "application/x-www-form-urlencoded; a*0=x; a*0=y",
+   {
+    "mediaType": "",
+    "failed": true
+   }
+  ],
+  [
+   "application/x-www-form-urlencoded; a*0=x; a*1=y",
+   {
+    "mediaType": "application/x-www-form-urlencoded",
+    "failed": false
+   }
+  ],
+  [
+   "application/x-www-form-urlencoded; =x",
+   {
+    "mediaType": "application/x-www-form-urlencoded",
+    "failed": true
+   }
+  ],
+  [
+   "application/x-www-form-urlencoded; a=b c",
+   {
+    "mediaType": "application/x-www-form-urlencoded",
+    "failed": true
+   }
+  ],
+  [
+   "application/x-www-form-urlencoded; a=b, text/plain",
+   {
+    "mediaType": "application/x-www-form-urlencoded",
+    "failed": true
+   }
+  ],
+  [
+   "application/x-www-form-urlencoded, text/plain",
+   {
+    "mediaType": "",
+    "failed": true
+   }
+  ],
+  [
+   "application/x-www-form-urlencoded ; charset=utf-8",
+   {
+    "mediaType": "application/x-www-form-urlencoded",
+    "failed": false
+   }
+  ],
+  [
+   "application/x-www-form-urlencoded/x",
+   {
+    "mediaType": "",
+    "failed": true
+   }
+  ],
+  [
+   "application /x-www-form-urlencoded",
+   {
+    "mediaType": "",
+    "failed": true
+   }
+  ],
+  [
+   "application/ x-www-form-urlencoded",
+   {
+    "mediaType": "",
+    "failed": true
+   }
+  ],
+  [
+   "application/x-www-form-urlencoded x",
+   {
+    "mediaType": "",
+    "failed": true
+   }
+  ],
+  [
+   "application",
+   {
+    "mediaType": "application",
+    "failed": false
+   }
+  ],
+  [
+   "/",
+   {
+    "mediaType": "",
+    "failed": true
+   }
+  ],
+  [
+   "application/",
+   {
+    "mediaType": "",
+    "failed": true
+   }
+  ],
+  [
+   "/x-www-form-urlencoded",
+   {
+    "mediaType": "",
+    "failed": true
+   }
+  ],
+  [
+   ";charset=utf-8",
+   {
+    "mediaType": "",
+    "failed": true
+   }
+  ],
+  [
+   "application/json",
+   {
+    "mediaType": "application/json",
+    "failed": false
+   }
+  ],
+  [
+   "text/plain; charset=utf-8",
+   {
+    "mediaType": "text/plain",
+    "failed": false
+   }
+  ],
+  [
+   "multipart/form-data; boundary=x",
+   {
+    "mediaType": "multipart/form-data",
+    "failed": false
+   }
+  ],
+  [
+   "application/x-www-form-urlencodedÂ ",
+   {
+    "mediaType": "application/x-www-form-urlencoded",
+    "failed": false
+   }
+  ],
+  [
+   "Â application/x-www-form-urlencoded",
+   {
+    "mediaType": "application/x-www-form-urlencoded",
+    "failed": false
+   }
+  ],
+  [
+   "application/x-www-form-urlencodedÂ",
+   {
+    "mediaType": "application/x-www-form-urlencoded",
+    "failed": false
+   }
+  ],
+  [
+   "ãapplication/x-www-form-urlencodedâ",
+   {
+    "mediaType": "application/x-www-form-urlencoded",
+    "failed": false
+   }
+  ],
+  [
+   "application/x-www-form-urlencoded;Â charset=utf-8",
+   {
+    "mediaType": "application/x-www-form-urlencoded",
+    "failed": false
+   }
+  ],
+  [
+   "application/x-www-form-urlencoded; charset=Ã©",
+   {
+    "mediaType": "application/x-www-form-urlencoded",
+    "failed": true
+   }
+  ],
+  [
+   "application/x-www-form-urlencoded; charset=\"Ã©\"",
+   {
+    "mediaType": "application/x-www-form-urlencoded",
+    "failed": false
+   }
+  ],
+  [
+   "applicatÄ°on/x-www-form-urlencoded",
+   {
+    "mediaType": "application/x-www-form-urlencoded",
+    "failed": false
+   }
+  ],
+  [
+   "APPLICATÄ°ON/X-WWW-FORM-URLENCODED",
+   {
+    "mediaType": "application/x-www-form-urlencoded",
+    "failed": false
+   }
+  ],
+  [
+   "application/x-www-form-urlencodedâª",
+   {
+    "mediaType": "application/x-www-form-urlencodedk",
+    "failed": false
+   }
+  ],
+  [
+   "application/âª-www-form-urlencoded",
+   {
+    "mediaType": "application/k-www-form-urlencoded",
+    "failed": false
+   }
+  ],
+  [
+   "application/x-www-form-urlencodedÿ",
+   {
+    "mediaType": "",
+    "failed": true
+   }
+  ],
+  [
+   "ÿapplication/x-www-form-urlencoded",
+   {
+    "mediaType": "",
+    "failed": true
+   }
+  ],
+  [
+   "application/x-www-form-urlencoded; charset=ÿ",
+   {
+    "mediaType": "application/x-www-form-urlencoded",
+    "failed": true
+   }
+  ],
+  [
+   "application/x-www-form-urlencoded\u0000",
+   {
+    "mediaType": "",
+    "failed": true
+   }
+  ],
+  [
+   "application/x-www-form-urlencoded\u000b",
+   {
+    "mediaType": "application/x-www-form-urlencoded",
+    "failed": false
+   }
+  ]
+ ],
+ "queries": [
+  [
+   "",
+   {
+    "values": [],
+    "failed": false
+   }
+  ],
+  [
+   "token=abc",
+   {
+    "values": [
+     [
+      "746f6b656e",
+      "616263"
+     ]
+    ],
+    "failed": false
+   }
+  ],
+  [
+   "token=a&token=b",
+   {
+    "values": [
+     [
+      "746f6b656e",
+      "61",
+      "62"
+     ]
+    ],
+    "failed": false
+   }
+  ],
+  [
+   "token=&token=b",
+   {
+    "values": [
+     [
+      "746f6b656e",
+      "",
+      "62"
+     ]
+    ],
+    "failed": false
+   }
+  ],
+  [
+   "token",
+   {
+    "values": [
+     [
+      "746f6b656e",
+      ""
+     ]
+    ],
+    "failed": false
+   }
+  ],
+  [
+   "token=",
+   {
+    "values": [
+     [
+      "746f6b656e",
+      ""
+     ]
+    ],
+    "failed": false
+   }
+  ],
+  [
+   "=x",
+   {
+    "values": [
+     [
+      "",
+      "78"
+     ]
+    ],
+    "failed": false
+   }
+  ],
+  [
+   "&&&token=x&&",
+   {
+    "values": [
+     [
+      "746f6b656e",
+      "78"
+     ]
+    ],
+    "failed": false
+   }
+  ],
+  [
+   "a=1;b=2",
+   {
+    "values": [],
+    "failed": true
+   }
+  ],
+  [
+   ";",
+   {
+    "values": [],
+    "failed": true
+   }
+  ],
+  [
+   "token=x;",
+   {
+    "values": [],
+    "failed": true
+   }
+  ],
+  [
+   "token=x&a=1;b=2",
+   {
+    "values": [
+     [
+      "746f6b656e",
+      "78"
+     ]
+    ],
+    "failed": true
+   }
+  ],
+  [
+   "a;=1&token=x",
+   {
+    "values": [
+     [
+      "746f6b656e",
+      "78"
+     ]
+    ],
+    "failed": true
+   }
+  ],
+  [
+   "%3B=1&token=x",
+   {
+    "values": [
+     [
+      "3b",
+      "31"
+     ],
+     [
+      "746f6b656e",
+      "78"
+     ]
+    ],
+    "failed": false
+   }
+  ],
+  [
+   "token=x%3By",
+   {
+    "values": [
+     [
+      "746f6b656e",
+      "783b79"
+     ]
+    ],
+    "failed": false
+   }
+  ],
+  [
+   "%zz",
+   {
+    "values": [],
+    "failed": true
+   }
+  ],
+  [
+   "%",
+   {
+    "values": [],
+    "failed": true
+   }
+  ],
+  [
+   "%4",
+   {
+    "values": [],
+    "failed": true
+   }
+  ],
+  [
+   "token=%",
+   {
+    "values": [],
+    "failed": true
+   }
+  ],
+  [
+   "token=%4",
+   {
+    "values": [],
+    "failed": true
+   }
+  ],
+  [
+   "token=%zz",
+   {
+    "values": [],
+    "failed": true
+   }
+  ],
+  [
+   "bad=%zz&token=x",
+   {
+    "values": [
+     [
+      "746f6b656e",
+      "78"
+     ]
+    ],
+    "failed": true
+   }
+  ],
+  [
+   "token=x&bad=%zz",
+   {
+    "values": [
+     [
+      "746f6b656e",
+      "78"
+     ]
+    ],
+    "failed": true
+   }
+  ],
+  [
+   "token=x&%=1",
+   {
+    "values": [
+     [
+      "746f6b656e",
+      "78"
+     ]
+    ],
+    "failed": true
+   }
+  ],
+  [
+   "%41=%42",
+   {
+    "values": [
+     [
+      "41",
+      "42"
+     ]
+    ],
+    "failed": false
+   }
+  ],
+  [
+   "token=%ff%00",
+   {
+    "values": [
+     [
+      "746f6b656e",
+      "ff00"
+     ]
+    ],
+    "failed": false
+   }
+  ],
+  [
+   "token=%E2%82%AC",
+   {
+    "values": [
+     [
+      "746f6b656e",
+      "e282ac"
+     ]
+    ],
+    "failed": false
+   }
+  ],
+  [
+   "token=â¬",
+   {
+    "values": [
+     [
+      "746f6b656e",
+      "e282ac"
+     ]
+    ],
+    "failed": false
+   }
+  ],
+  [
+   "token=ÿ",
+   {
+    "values": [
+     [
+      "746f6b656e",
+      "ff"
+     ]
+    ],
+    "failed": false
+   }
+  ],
+  [
+   "a+b=c+d",
+   {
+    "values": [
+     [
+      "612062",
+      "632064"
+     ]
+    ],
+    "failed": false
+   }
+  ],
+  [
+   "+=+",
+   {
+    "values": [
+     [
+      "20",
+      "20"
+     ]
+    ],
+    "failed": false
+   }
+  ],
+  [
+   "k=v=w",
+   {
+    "values": [
+     [
+      "6b",
+      "763d77"
+     ]
+    ],
+    "failed": false
+   }
+  ],
+  [
+   "a%26b=c",
+   {
+    "values": [
+     [
+      "612662",
+      "63"
+     ]
+    ],
+    "failed": false
+   }
+  ],
+  [
+   "token=a%2Bb",
+   {
+    "values": [
+     [
+      "746f6b656e",
+      "612b62"
+     ]
+    ],
+    "failed": false
+   }
+  ],
+  [
+   "token=%20",
+   {
+    "values": [
+     [
+      "746f6b656e",
+      "20"
+     ]
+    ],
+    "failed": false
+   }
+  ],
+  [
+   "#token=x",
+   {
+    "values": [
+     [
+      "23746f6b656e",
+      "78"
+     ]
+    ],
+    "failed": false
+   }
+  ],
+  [
+   "token=x#frag",
+   {
+    "values": [
+     [
+      "746f6b656e",
+      "782366726167"
+     ]
+    ],
+    "failed": false
+   }
+  ],
+  [
+   "?token=x",
+   {
+    "values": [
+     [
+      "3f746f6b656e",
+      "78"
+     ]
+    ],
+    "failed": false
+   }
+  ]
+ ]
 }

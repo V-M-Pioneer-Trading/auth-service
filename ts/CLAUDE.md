@@ -5,15 +5,18 @@ service in `../src` is what runs in production until the cutover (auth-service#1
 its behaviour is pinned to Go's by the black-box suite in `../contract` (never edited to make code pass). Many comments
 say "like Go": read them as "as the contract suite and the Go source pin it".
 
-Step 7a (this scaffold) ports: health, status, CORS, the router's 404/405/301 table, every startup refusal, SQLite.
-Not ported, and deliberately unregistered so the contract skip list covers them: introspection (7b), the vault, register,
-restore and the poller (7c), machine tokens (7d). No JWT is verified anywhere in this package yet.
+Step 7a (the scaffold) ported: health, status, CORS, the router's 404/405/301 table, every startup refusal, SQLite.
+Step 7b ported Clerk JWT verification (`src/jwt/verify.ts`, `jose`) and `POST /auth/v1/introspect`
+(`src/introspection.ts`, `controllers/introspect.controller.ts`). Not ported, and deliberately unregistered so the
+contract skip list covers them: the vault, register, restore and the poller (7c), machine tokens (7d). The vault's
+operator routes must call the same `createVerifier` function in-process (decision 21: one verification code path).
 
 ## Commands (from `ts/`)
 
 | Task | Command |
 |---|---|
 | Install | `npm ci --ignore-scripts` (never plain `npm ci`, never `npm install` in CI) |
+| Test one file | `npm test -- src/__tests__/verifyToken.test.ts` (`npm test` runs Jest under `--experimental-vm-modules`: `jose` is ESM-only, and Jest loads it with Node's `require(esm)` only so; the built service needs no flag) |
 | Typecheck / lint / build / test | `npm run typecheck` / `npm run lint` / `npm run build` / `npm test` |
 | Regenerate the OpenAPI spec | `npm run openapi` (CI fails on drift in `openapi.json`) |
 | Dependency gate | `npm run check:deps`; after any change to `package-lock.json`, `npm run snapshot:deps` and review the diff |
@@ -44,7 +47,11 @@ root like the Go image: `/data/auth.db` is root-owned.
 * Known cost: `@tsoa/runtime` depends on `@hapi/*` (about 30 packages) though only Express is used. It is in `[runtime]` of
   the lockfile and snapshot but never loaded and not in the image: `runtimeTree.test.ts` boots `dist/server.js` and fails if
   anything under `@hapi` or `@types` is required (so `npm test` builds first).
-* `jose` joins in 7b; `clerk-client` is not a dependency (auth-service is the verifier; clerk-client is how the others ask it).
+* `jose` (7b) is pinned exactly, has no dependencies and no install script: one line in `[runtime]`. `clerk-client` is not a
+  dependency (auth-service is the verifier; clerk-client is how the others ask it).
+* The eslint-config release tarball is the only lock entry that may resolve to a release asset, its `resolved` must equal
+  package.json's URL and its version the tag's: npm ci fetches package.json's URL and skips the lockfile's integrity when
+  the two differ, so a lockfile-only edit would otherwise void the pin.
 
 ## Where Go is reproduced, and how it is proven
 
@@ -53,14 +60,21 @@ root like the Go image: `/data/auth.db` is root-owned.
 | env, defaults, startup refusals, their order | `src/config.ts` | `config.test.ts`; contract `startup.test.ts` |
 | `url.Parse` verdict of CLERK_API_BASE_URL | `src/goUrl.ts` | `goParity.test.ts` against recorded Go 1.22.4 verdicts |
 | `strings.TrimSpace` set | `src/goText.ts` | same |
-| golang-jwt PEM readers | `src/keys.ts` | same, 52 spellings |
-| `time.Parse(RFC3339)` / `Format` | `src/goTime.ts` | same |
+| golang-jwt PEM readers (DER lengths, getLine on the END line) | `src/keys.ts` | same, 80 spellings |
+| golang-jwt verifyToken (with jose) | `src/jwt/verify.ts` | `verifyToken.test.ts`: 179 tokens against Go's recorded answers, deviations named |
+| `mime.ParseMediaType`, `url.ParseQuery` (ParseForm) | `src/http/goForm.ts` | `goParity.test.ts`, 64 content types and 38 queries |
+| the introspection handler, MaxBytesReader, 100-continue | `src/introspection.ts`, `src/http/body.ts` | `introspect.test.ts`; contract `introspect*.test.ts` |
+| the server-side fixture conformance test | — | `introspectionFixture.test.ts` against the vendored fixture v6, sha256-pinned |
+| `time.Parse(RFC3339)` / `Format` | `src/goTime.ts` | `goParity.test.ts` |
 | gorilla/mux and net/http artefacts | `src/http/muxCompat.ts`, `cors.ts`, `json.ts` | `app.test.ts`; contract `routing.test.ts` |
 | server hardening (unread bodies, timeouts, parse errors) | `src/server.ts` | `connections.test.ts` |
 | SQLite, same DDL | `src/db/` | `db.test.ts` against a file the Go image's `db` package wrote |
 
 Never `url.Parse` through WHATWG `URL`, never `trim()` for Go's TrimSpace, never `createPublicKey(pem)` directly: each
-answers differently from Go on inputs the contract pins.
+answers differently from Go on inputs the contract pins. Never `URLSearchParams` or `express.urlencoded` for the
+introspection form (no `;` error, no sticky escape error), never `req.headers[...]` for the introspection secret (Node
+joins repeats), and never `jwtVerify` without `verify.ts`'s Go checks around it (it reads padding, whitespace, a BOM and
+1e400 that golang-jwt refuses, and judges a fractional `exp` up to a second longer).
 
 ## Deliberate differences from Go
 
@@ -77,6 +91,11 @@ answers differently from Go on inputs the contract pins.
   PKCS#1 private key but accepted for a PKCS#8 private key; the END line must start a line and the first END decides.
 * Accepted by the owner (decision 23): `Cache-Control: no-store` may be added to `GET /auth/v1/token`; a JWT with an unknown
   `crit` header is rejected; `GET /auth/v1/token`'s secret compares in constant time.
+* Token verification is stricter than Go's, never looser (each case pinned against Go's recorded answer): any `crit` but
+  `["b64"]` with `b64: true` (decision 23); an RSA key under 2048 bits makes every token inactive (jose's floor for RS256,
+  Go has none; no startup refusal is added in the port, a follow-up after cutover); a present `iat` that is not a number;
+  claims that are not valid UTF-8 (Go substitutes U+FFFD); a fractional `nbf` inside the last second of the leeway; an
+  `nbf` so large that Go's int64 conversion wraps it into the past. None is producible by Clerk.
 
 ## Invariants
 

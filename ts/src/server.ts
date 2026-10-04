@@ -3,12 +3,15 @@ import type { DatabaseSync } from "node:sqlite";
 import express, { type ErrorRequestHandler, type Request, type RequestHandler } from "express";
 
 import { ConfigError, loadConfig, type Config } from "./config";
-import { CLOCK_LOCAL, CREDENTIALS_LOCAL } from "./controllers/support";
+import { CLOCK_LOCAL, CREDENTIALS_LOCAL, INTROSPECTION_LOCAL } from "./controllers/support";
 import { sqliteCredentialStore, type CredentialStore } from "./db/credential";
 import { openDatabase } from "./db/database";
 import { RegisterRoutes } from "./generated/routes";
+import { CallerGone } from "./http/body";
 import { corsHeaders } from "./http/cors";
 import { goJson, sendText, TextAnswer } from "./http/json";
+import type { IntrospectionDeps } from "./introspection";
+import { createVerifier } from "./jwt/verify";
 import { decodedPathOf, muxCompat, noHead, terminalAnswer } from "./http/muxCompat";
 import { stderrLog, visible, type Logger } from "./log";
 import { nodeTooOld } from "./runtime";
@@ -89,6 +92,8 @@ export function createHttpServer(app: express.Express): http.Server {
 export interface AppDeps {
   readonly corsAllowedOrigin: string;
   readonly credentials: CredentialStore;
+  /** POST /auth/v1/introspect's secret and verifier. Without them the route refuses every caller (no secret). */
+  readonly introspection?: IntrospectionDeps;
   /** Milliseconds since the epoch; the wall clock if not given. */
   readonly now?: () => number;
   /** One line per request, like the Go logging middleware; off unless given. */
@@ -115,6 +120,7 @@ export function createApp(deps: AppDeps): express.Express {
   const app = express();
   app.locals[CREDENTIALS_LOCAL] = deps.credentials;
   app.locals[CLOCK_LOCAL] = deps.now ?? Date.now;
+  app.locals[INTROSPECTION_LOCAL] = deps.introspection ?? { secret: "", verifier: () => Promise.resolve(null) };
   app.disable("x-powered-by");
   app.set("etag", false);
   // mux is case sensitive and tolerates no trailing slash.
@@ -139,6 +145,8 @@ export function createApp(deps: AppDeps): express.Express {
   app.use(terminalAnswer);
 
   const onError: ErrorRequestHandler = (err: unknown, _req, res, next) => {
+    // The caller hung up while its body was being read: nobody is left to answer.
+    if (err instanceof CallerGone) return;
     if (res.headersSent) {
       next(err);
       return;
@@ -171,7 +179,12 @@ export function main(env: NodeJS.ProcessEnv = process.env): void {
     process.exit(1);
   }
 
-  const app = createApp({ corsAllowedOrigin: config.corsAllowedOrigin, credentials: sqliteCredentialStore(db), log: stderrLog });
+  const app = createApp({
+    corsAllowedOrigin: config.corsAllowedOrigin,
+    credentials: sqliteCredentialStore(db),
+    introspection: { secret: config.introspectionSecret, verifier: createVerifier({ key: config.clerkJwtKey, issuer: config.clerkIssuer }) },
+    log: stderrLog,
+  });
   const server = createHttpServer(app);
   server.listen(config.port, () => {
     stderrLog(`auth-service listening on :${String(config.port)}`);
