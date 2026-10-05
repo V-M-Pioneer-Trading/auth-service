@@ -261,10 +261,14 @@ class Parser {
   private literal(word: string, v: Value): Value {
     this.i++;
     for (let k = 1; k < word.length; k++) {
+      const c = this.b[this.i];
+      if (c === word.charCodeAt(k)) {
+        this.i++;
+        continue;
+      }
+      // The error's context is made only when there is an error (it is not free).
       const context = `in literal ${word} (expecting ${quoteChar(word.charCodeAt(k))})`;
-      const c = this.needIn(context);
-      if (c !== word.charCodeAt(k)) this.fail(c, context);
-      this.i++;
+      return this.fail(this.needIn(context), context);
     }
     return v;
   }
@@ -336,17 +340,43 @@ class Parser {
       if (c >= 0x80) {
         const width = utf8Width(b, this.i);
         if (width > 0) this.i += width;
+        else if (!keep) this.i++;
         else {
-          if (keep) out += b.toString("utf8", start, this.i) + "\ufffd";
-          this.i++;
-          start = this.i;
+          // Invalid UTF-8 in a string that is kept: the rest of this run of raw bytes is copied into one buffer, a
+          // U+FFFD (EF BF BD) for each invalid byte, and decoded once (not once per invalid byte).
+          let end = this.i;
+          while (end < b.length && b[end] !== 0x22 && b[end] !== 0x5c && (b[end] ?? 0) >= 0x20) end++;
+          const run = Buffer.allocUnsafe((end - start) * 3);
+          let w = 0;
+          let from = start;
+          for (let k = this.i; k < end; ) {
+            if ((b[k] ?? 0) < 0x80) {
+              k++;
+              continue;
+            }
+            const wd = utf8Width(b, k);
+            if (wd > 0) {
+              k += wd;
+              continue;
+            }
+            w += b.copy(run, w, from, k);
+            run[w++] = 0xef;
+            run[w++] = 0xbf;
+            run[w++] = 0xbd;
+            k++;
+            from = k;
+          }
+          w += b.copy(run, w, from, end);
+          out += run.toString("utf8", 0, w);
+          this.i = end;
+          start = end;
         }
         continue;
       }
       // A backslash.
       if (keep) out += b.toString("utf8", start, this.i);
       this.i++;
-      const e = this.need();
+      const e = this.needIn("in string escape code");
       const s = SIMPLE_ESCAPE[e];
       if (s !== undefined) {
         if (keep) out += s;
@@ -377,7 +407,7 @@ class Parser {
   private hex4(): number {
     let r = 0;
     for (let k = 0; k < 4; k++) {
-      const c = this.need();
+      const c = this.needIn("in \\u hexadecimal character escape");
       const h = hexValue(c);
       if (h < 0) this.fail(c, "in \\u hexadecimal character escape");
       r = r * 16 + h;
