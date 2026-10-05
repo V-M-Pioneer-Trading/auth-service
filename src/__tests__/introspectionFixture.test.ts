@@ -184,8 +184,12 @@ function decodeCenterBody(body: string): CenterBody | null {
 function classify(c: FixtureCase): [CenterClass, CenterBody | null] {
   if (c.center.notCalled === true) return ["notApplicable", null];
   if ((c.center.transport ?? "") !== "" || (c.center.delayMs ?? 0) > 0) return ["clientOnly", null];
-  if (c.center.status === 401) return ["callerSecret", null];
-  if (c.center.status !== 200) return ["clientOnly", null];
+  if (c.center.status !== 200) {
+    // A non-2xx carrying an active answer (version 7) is client-side: the center never sends one, and a client must
+    // answer 503 without reading it. Only the center's own 401 about our secret is the center's to produce.
+    if (c.center.status === 401 && decodeCenterBody(c.center.body ?? "")?.active !== true) return ["callerSecret", null];
+    return ["clientOnly", null];
+  }
   const body = decodeCenterBody(c.center.body ?? "");
   if (body === null) return ["clientOnly", null];
   if (ambiguousTopLevelKey(c.center.body ?? "") !== null) return ["ambiguousKeys", body];
@@ -207,8 +211,8 @@ describe("the vendored fixture is the exact copy it claims to be", () => {
     expect(createHash("sha256").update(raw).digest("hex")).toBe(recorded);
   });
 
-  it("is version 6", () => {
-    expect(fixture.version).toBe(6);
+  it("is version 7", () => {
+    expect(fixture.version).toBe(7);
   });
 
   it("has exactly the case names this file was written against", () => {
@@ -216,22 +220,26 @@ describe("the vendored fixture is the exact copy it claims to be", () => {
       [
         "active-machine-kind", "active-with-irregular-scope-whitespace", "active-with-multi-value-scope", "active-with-non-separators-in-scope",
         "active-with-only-spaces-in-scope", "active-with-required-scope", "active-with-scope-differing-only-in-case",
-        "active-with-scope-that-is-a-prefix-of-required", "active-without-required-scope", "bearer-with-empty-token", "bearer-with-internal-whitespace",
-        "center-rejects-our-caller-secret", "center-returns-500", "center-returns-case-variant-duplicate-key", "center-returns-contract-key-in-another-case",
+        "active-with-scope-that-is-a-prefix-of-required", "active-without-required-scope", "bearer-with-empty-token",
+        "bearer-with-internal-whitespace", "center-rejects-our-caller-secret", "center-returns-302-with-active-body",
+        "center-returns-401-with-active-body", "center-returns-404-with-active-body", "center-returns-500", "center-returns-500-with-active-body",
+        "center-returns-503-with-active-body", "center-returns-case-variant-duplicate-key", "center-returns-contract-key-in-another-case",
         "center-returns-duplicate-key", "center-returns-malformed-json", "center-times-out", "center-unreachable", "gateway-active-machine",
         "gateway-active-operator", "gateway-active-operator-lacking-scope-key", "gateway-bearer-with-empty-token",
-        "gateway-center-rejects-our-caller-secret", "gateway-center-returns-case-variant-duplicate-key", "gateway-center-returns-duplicate-key",
-        "gateway-center-unreachable", "gateway-inactive-token", "gateway-kind-machine-with-user-subject", "gateway-kind-operator-with-machine-subject",
-        "gateway-no-header", "gateway-non-bearer-scheme", "gateway-two-authorization-lines", "head-on-guarded-route-with-no-header",
+        "gateway-center-rejects-our-caller-secret", "gateway-center-returns-302-with-active-body", "gateway-center-returns-401-with-active-body",
+        "gateway-center-returns-404-with-active-body", "gateway-center-returns-500-with-active-body", "gateway-center-returns-503-with-active-body",
+        "gateway-center-returns-case-variant-duplicate-key", "gateway-center-returns-duplicate-key", "gateway-center-unreachable",
+        "gateway-inactive-token", "gateway-kind-machine-with-user-subject", "gateway-kind-operator-with-machine-subject", "gateway-no-header",
+        "gateway-non-bearer-scheme", "gateway-two-authorization-lines", "head-on-guarded-route-with-no-header",
         "head-on-guarded-route-with-valid-token", "head-on-public-get", "inactive-token-on-guarded-route", "inactive-token-on-public-get",
         "kind-disagrees-with-sub-prefix", "lowercase-bearer-scheme", "lowercase-route-method", "mutating-route-with-no-declared-scope",
-        "mutating-route-with-no-declared-scope-and-inactive-token", "mutating-route-with-no-declared-scope-and-no-header", "no-header-on-guarded-route",
-        "non-bearer-scheme-on-guarded-route", "operator-on-public-get", "options-on-guarded-route-with-no-header", "options-with-no-declared-scope",
-        "scope-joined-by-em-space", "scope-joined-by-form-feed", "scope-joined-by-no-break-space", "scope-joined-by-several-spaces",
-        "scope-joined-by-tab", "scope-joined-by-vertical-tab", "scoped-route-with-token-lacking-scope-key", "session-route-with-inactive-token",
-        "session-route-with-no-header", "session-route-with-scopeless-token", "session-route-with-token-lacking-scope-key",
-        "token-on-public-get-while-center-is-down", "two-authorization-lines", "two-authorization-lines-on-public-get",
-        "two-authorization-lines-second-empty", "visitor-on-public-get",
+        "mutating-route-with-no-declared-scope-and-inactive-token", "mutating-route-with-no-declared-scope-and-no-header",
+        "no-header-on-guarded-route", "non-bearer-scheme-on-guarded-route", "operator-on-public-get", "options-on-guarded-route-with-no-header",
+        "options-with-no-declared-scope", "scope-joined-by-em-space", "scope-joined-by-form-feed", "scope-joined-by-no-break-space",
+        "scope-joined-by-several-spaces", "scope-joined-by-tab", "scope-joined-by-vertical-tab", "scoped-route-with-token-lacking-scope-key",
+        "session-route-with-inactive-token", "session-route-with-no-header", "session-route-with-scopeless-token",
+        "session-route-with-token-lacking-scope-key", "token-on-public-get-while-center-is-down", "two-authorization-lines",
+        "two-authorization-lines-on-public-get", "two-authorization-lines-second-empty", "visitor-on-public-get",
       ].sort(),
     );
   });
@@ -255,8 +263,8 @@ describe("the center produces every fixture response it can", () => {
   let multiLine = 0;
   const runs: [string, () => Promise<void>][] = [];
 
-  expect(fixture.cases).toHaveLength(51);
-  expect(fixture.gatewayCases).toHaveLength(14);
+  expect(fixture.cases).toHaveLength(56);
+  expect(fixture.gatewayCases).toHaveLength(19);
 
   for (const c of all) {
     const [cls, want] = classify(c);
@@ -332,7 +340,7 @@ describe("the center produces every fixture response it can", () => {
   }
 
   it("classifies every case, with the totals the Go test asserts", () => {
-    expect(counts).toEqual({ notApplicable: 21, active: 24, activeNoScopeKey: 3, inactive: 4, callerSecret: 2, ambiguousKeys: 5, clientOnly: 6 });
+    expect(counts).toEqual({ notApplicable: 21, active: 24, activeNoScopeKey: 3, inactive: 4, callerSecret: 2, ambiguousKeys: 5, clientOnly: 16 });
     expect(multiLine).toBe(4);
   });
 
