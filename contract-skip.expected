@@ -3,7 +3,7 @@
 # skipped = cases covered by contract-skip.txt (routes not ported yet)
 # pass    = cases outside the list, all of which pass
 # dynamic-skips = t.skip() calls inside the suite itself (the introspection fixture's client-only cases)
-suite=320
+suite=330
 skipped=0
 pass=293
-dynamic-skips=27
+dynamic-skips=37
