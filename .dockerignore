@@ -1,0 +1,12 @@
+# The build context is the repository root. The Dockerfile copies only package files, the tsconfigs, tsoa.json, scripts/
+# and src/, so everything else stays out of it (and out of a layer's cache key).
+.git
+.github
+.claude
+node_modules
+dist
+src/generated
+contract
+*.md
+.dockerignore
+Dockerfile

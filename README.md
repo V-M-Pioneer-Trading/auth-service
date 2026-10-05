@@ -6,51 +6,64 @@ either. This is `meta/docs/design/auth-design.md` decision 5/6: this service hol
 credential and refreshes it, so st-gateway can inject it instead of every caller carrying it.
 
 It is also the fleet's **single token verifier** (decision 21, which supersedes decision 4's
-"authorization is a library in every service") — see `POST /auth/v1/introspect` below.
+"authorization is a library in every service") — see `POST /auth/v1/introspect` below — and
+the **machine-token minter** (decision 22) — see `POST /auth/v1/m2m-token`.
 
-**Status: increment 3, Stage 3 in progress.** Stages 1–2 (this application; st-gateway
-injection and priority derivation) are done and tested. Stage 3's Terraform stack exists in
-`V-M-Pioneer-Trading/infrastructure/auth-service/` but this service is **not yet deployed** —
-no GitHub repo, no live host, no traffic. It is also not yet wired into Caddy/CloudFront (Stage
-4). See `meta/docs/design/auth-design.md`'s "New repository: auth-service" and "Build order"
-sections for the full rollout plan.
-
-> **TypeScript port in progress** (meta#103, auth-design.md decision 23): `ts/` holds the TypeScript
-> service, built beside this Go one and held to it by `contract/`. Nothing deploys from it until the cutover
-> (auth-service#17). Contributor notes: `ts/CLAUDE.md`.
+**TypeScript since the cutover** (meta#103, auth-design.md decision 23; auth-service#17). The
+service was written in Go until then; the Go code is gone from `main` and lives in its history
+(the last Go commit is `8a09f84d8898e4e1bd1428cce264250ab9ce78d1`: `git show 8a09f84:src/...`;
+comments in `src/` that name `src/api/*.go` point there). The black-box suite in `contract/`
+held both implementations to one behaviour and stays as the regression gate. Contributor and
+agent notes: `CLAUDE.md`. Production: one container on the shared host, port 3005 (Deploy and
+Rollback below).
 
 ## Setup and local development
 
 ### Required software
 
-* Golang (https://go.dev/doc/install) — 1.22+
+* Node 24.15 or later (`node:sqlite` is a release candidate from 24.15; the service refuses to
+  start on anything older) and npm.
+* Docker, for the contract suite and the image.
 
 ### Running application locally
 
 From `meta/`:
 > docker compose up auth-service
 
-Or directly, from `src/`:
-> go run .
+Or directly (needs the environment of the table below; `CLERK_JWT_KEY` or `CLERK_JWT_KEY_FILE`
+and `AUTH_SERVICE_SHARED_SECRET` are the two it refuses to start without):
+> npm ci --ignore-scripts && npm run build && node dist/server.js
 
-Requires `CLERK_JWT_KEY`/`CLERK_JWT_KEY_FILE` and `AUTH_SERVICE_SHARED_SECRET` — see
-Environment variables below. `docker compose` supplies both from `meta/dev-keys/` and
-`meta/.env`. `AUTH_INTROSPECTION_SECRET` is optional: without it the service still starts
-and `POST /auth/v1/introspect` rejects every caller.
+`docker compose` supplies the secrets from `meta/dev-keys/` and `meta/.env`.
+`AUTH_INTROSPECTION_SECRET` is optional: without it the service still starts and
+`POST /auth/v1/introspect` rejects every caller.
 
 ### Tests
 
-> cd src && go test ./...
+| What | Command |
+|---|---|
+| Install | `npm ci --ignore-scripts` (never plain `npm ci`: no dependency's install script runs, here, in CI or in the image) |
+| Typecheck, lint, build | `npm run typecheck`, `npm run lint`, `npm run build` |
+| Unit tests (Jest) | `npm test` (builds first) |
+| Dependency gate | `npm run check:deps` (allowlist and transitive snapshot; see `CLAUDE.md`) |
+| OpenAPI spec | `npm run openapi` regenerates `openapi.json`; CI fails when it drifts |
+| Contract suite against the image | `docker build -t auth-service:contract .` then `CONTRACT_IMAGE=auth-service:contract node scripts/run-contract.cjs` |
 
 State-machine and poller tests run with no network access (in-memory SQLite, stubbed
 SpaceTraders calls) — the only untestable path locally is a real account-token reset flow,
 which needs a real account token that doesn't exist outside production
 (auth-design.md decision 10's known gap).
 
-Introspection is tested against `src/api/testdata/introspection.json`, a verbatim copy of
-`meta/fixtures/introspection.json` (provenance and re-copy instructions in
-`src/api/testdata/SOURCE.txt`). This is the only repository where real signatures are still
-checked — every other service's suite stands up a stub center instead.
+Introspection is tested against `contract/fixtures/introspection.json`, a verbatim copy of
+`meta/fixtures/introspection.json` (provenance, sha256 pin and re-copy instructions in
+`contract/fixtures/SOURCE.txt`), by `src/__tests__/introspectionFixture.test.ts` and by the
+contract suite. This is the only repository where real signatures are still checked — every
+other service's suite stands up a stub center instead.
+
+CI (`.github/workflows/container.yml`) reports `ts-checks` (the dependency gate and
+`npm audit`), `test` (typecheck, lint, build, the `openapi.json` freshness check, Jest) and
+`contract`; the `docker` job builds the arm64 image and, on `main`, deploys it. These three
+names are the required checks on `main`.
 
 ### Endpoints
 
@@ -71,7 +84,7 @@ checked — every other service's suite stands up a stub center instead.
 [meta#80](https://github.com/V-M-Pioneer-Trading/meta/issues/80)). Every other
 service sends the token it received here and compares the returned scopes
 against what its own route declares. The contract is fixed by
-`meta/fixtures/introspection.json`, vendored into `src/api/testdata/`.
+`meta/fixtures/introspection.json`, vendored into `contract/fixtures/`.
 
     curl -s localhost:$PORT/auth/v1/introspect \
       -H "X-Introspection-Secret: $AUTH_INTROSPECTION_SECRET" \
@@ -103,9 +116,9 @@ against what its own route declares. The contract is fixed by
   `503`, never as a `401`.
 - **Verification** — what every service did before, moved here, plus two
   stricter checks: `exp` is required and `sub` must be a non-empty string, so
-  an active answer always carries both. `golang-jwt`, RS256 pinned, `exp`/`nbf` with a **60-second** leeway (decision
+  an active answer always carries both. RS256 pinned (`jose`, with the Go parser's checks around it in `src/jwt/verify.ts`), `exp`/`nbf` with a **60-second** leeway (decision
   21 says "a small leeway" without naming a value; 60 s is this repository's
-  choice — see `clockSkewLeeway` in `src/api/introspect.go` for the reasoning),
+  choice — see `CLOCK_SKEW_LEEWAY_SECONDS` in `src/jwt/verify.ts` for the reasoning),
   `CLERK_ISSUER` checked when configured, networkless, no bypass flag. `azp` is
   **deliberately not checked** (owner's decision, 2026-09-20).
 - `POST /api/auth/v1/agent-token` and `/register` call the **same verification
@@ -132,7 +145,7 @@ presents its own caller secret and gets back a bearer token for its outbound cal
 | Any other method | `405` | — |
 
 - **The secret is the identity.** There is no body field naming a caller or asking for a
-  scope. Scopes are a fixed table in `src/api/m2m.go`: `automation-service` gets
+  scope. Scopes are a fixed table in `src/config.ts`: `automation-service` gets
   `fleet:control`; `ai-service` gets `events:write planner:advise`. Changing it is a pull
   request here.
 - **Tokens live 24 hours** and are cached in memory per caller, served again until the
@@ -163,7 +176,46 @@ presents its own caller secret and gets back a bearer token for its outbound cal
 - A `401` names no caller and no secret, in the body or the log.
 
 `state` is one of `UNCONFIGURED` / `HEALTHY` / `WIPE_IMMINENT` / `APP_TOKEN_EXPIRED` — see
-`src/state/machine.go` and auth-design.md decisions 7/8 for the transition rules.
+`src/state/machine.ts` and auth-design.md decisions 7/8 for the transition rules.
+
+### Deploy
+
+CI deploys `main`: `.github/workflows/container.yml` runs `ts-checks`, `test` and `contract` on every pull request and push, and on a push to `main` its `docker` job builds the root `Dockerfile` for linux/arm64 (the shared host is a Graviton t4g), pushes `ghcr.io/v-m-pioneer-trading/auth-service:sha-<40 hex>` and `:latest`, and redeploys on the shared host: it sends the SSM document `auth-service-bootstrap-<instance id>` (instance `i-011b6b82a9072a385`, eu-central-1) and waits for it to finish. The job deploys only if its commit is still the tip of `main`, only one run deploys at a time, and a failed bootstrap fails the run. A `v*` tag builds and pushes `sha-<40 hex>` only and never deploys.
+
+What the bootstrap does (Terraform in `V-M-Pioneer-Trading/infrastructure`, `auth-service/`): reads the secrets from SSM Parameter Store, pulls the image, replaces the `auth-service` container (on the `authnet` network, bound to `127.0.0.1:3005`, `PORT=3005`, `SQLITE_DB_PATH=/data/auth.db`) and polls `GET /health` on `127.0.0.1:3005` for about 90 seconds, failing the command if it never answers. The other services reach it on `localhost:3005`; CloudFront routes `/api/auth/*`.
+
+The image is `gcr.io/distroless/nodejs24-debian13`: no shell, no package manager, the entrypoint is `node`, and it runs as **root** because the existing `/data/auth.db` is root-owned (changing that is a volume ownership migration, not part of the cutover). To look at it on the host use `docker inspect auth-service`, `docker logs auth-service` and `docker stats`; there is no shell to `docker exec` into.
+
+A memory cap (`--memory`, plus a Node old-space limit) belongs on the `docker run` in the bootstrap document in infrastructure, not here.
+
+### The SQLite state (`/data` volume)
+
+The credential row (account token, agent token, symbol, reset dates, the `APP_TOKEN_EXPIRED` flag) and the registration history live in one SQLite file, `SQLITE_DB_PATH` (production: `/data/auth.db`; the host directory `/data/auth-service`, on its own EBS volume, is mounted at `/data`; locally, compose mounts a named volume). The schema is applied on every start and is exactly the one the Go implementation used, so **either image opens the file the other wrote**, in both directions; that is what makes a rollback need no data change (`src/__tests__/db.test.ts` and `vaultStore.test.ts` run against a file the Go image wrote; the contract suite restarts the container on the same volume). Never delete the file to "fix" a deploy: it holds the only copy of the agent token, and a lost one is restored through Restore Token or the agent is reset through Reset Agent, with a human holding the account token (decisions 7 and 8).
+
+### Rollback
+
+The bootstrap document takes an optional `imageTag` parameter (default `latest`, which is what CI and the association send). `latest` or `sha-<40 hex git sha>` are the only values it accepts; only commits pushed to `main` or a `v*` tag have a `sha-` image. To put an earlier image on the host:
+
+```bash
+INSTANCE_ID=i-011b6b82a9072a385
+SHA=<40-hex commit sha to roll back to>
+command_id=$(aws ssm send-command --region eu-central-1 \
+  --document-name "auth-service-bootstrap-$INSTANCE_ID" \
+  --targets "Key=InstanceIds,Values=$INSTANCE_ID" \
+  --parameters imageTag=sha-$SHA --timeout-seconds 600 \
+  --query Command.CommandId --output text)
+# wait for Success, not Failed or TimedOut
+aws ssm get-command-invocation --region eu-central-1 \
+  --command-id "$command_id" --instance-id "$INSTANCE_ID" --query Status --output text
+```
+
+Check first that the CI deploy on `main` is idle, or the two runs race. **A rollback is not sticky:** the next merge to `main`, any run of the bootstrap without `imageTag`, and any `terraform apply` that changes the document redeploy `:latest`. Follow a rollback with a revert PR on `main` before anything else merges there. An older image may not accept today's environment (the introspection and M2M variables), so read the command's status; the `/health` poll fails it if the container crash-loops.
+
+The last Go image, for a rollback across the cutover, is `sha-8a09f84d8898e4e1bd1428cce264250ab9ce78d1` (the tip of `main` before the cutover PR; its `container` run built and deployed the Go Dockerfile). `scripts/cutover-probe.mjs` is the production probe used for the cutover (see its header and the cutover PR, auth-service#17), with `scripts/cutover-deploy-rc.ps1` and `scripts/cutover-hostcheck.ps1` for the host side; the probe is safe to re-run after any deploy.
+
+### Secrets
+
+The SSM parameters the bootstrap reads, and the variables they become: `AUTH_SERVICE_SHARED_SECRET` (`auth-service-shared-secret`, shared with st-gateway alone), `AUTH_INTROSPECTION_SECRET` (`auth-service-introspection-secret`, shared with every verifying service), `CLERK_JWT_KEY` (`auth-service-clerk-jwt-key`), `M2M_MACHINE_KEY_AUTOMATION_SERVICE` and `M2M_MACHINE_KEY_AI_SERVICE` (Clerk Machine Secret Keys), `M2M_CALLER_SECRET_AUTOMATION_SERVICE` and `M2M_CALLER_SECRET_AI_SERVICE`. None is ever logged, echoed in a refusal or put in an error message (`CLAUDE.md`, invariant 1); the repository is public.
 
 ### Environment variables
 
@@ -196,7 +248,7 @@ presents its own caller secret and gets back a bearer token for its outbound cal
   caller** (its requests get `401`); it is not a startup error. Fatal at startup: equal to
   `AUTH_SERVICE_SHARED_SECRET`, to `AUTH_INTROSPECTION_SECRET` (every service holds that one,
   so every service could mint), or to the other caller's secret (either could mint as the
-  other); set with leading or trailing whitespace, or whitespace only (Go trims header values,
+  other); set with leading or trailing whitespace, or whitespace only (HTTP header values are trimmed,
   so it could never match); or set with nothing to mint with (neither that caller's machine
   key nor the dev key).
 - `M2M_MACHINE_KEY_AUTOMATION_SERVICE`, `M2M_MACHINE_KEY_AI_SERVICE` — that caller's Clerk

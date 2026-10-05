@@ -1,5 +1,0 @@
-node_modules/
-dist/
-src/generated/
-# Root .gitignore ignores *.db (local data); this one is a fixture.
-!src/__tests__/fixtures/go-written.db

@@ -1,7 +1,7 @@
 // Runs the contract suite (contract/) against the TypeScript service image, whole and
 // unfiltered, and judges it against contract-skip.txt.
 //
-//   CONTRACT_IMAGE=auth-service:contract-ts node scripts/run-contract.cjs     (from ts/)
+//   CONTRACT_IMAGE=auth-service:contract node scripts/run-contract.cjs     (from the repository root)
 //
 // The suite is not modified and no case is removed from the run. Every leaf test's
 // full name (describe names and test name, joined by single spaces, which is what
@@ -21,15 +21,14 @@
 //     skips. The list can only change together with that file.
 //
 // Environment: CONTRACT_IMAGE, the image to run (required: the suite is black-box).
-// The suite is found at ../contract (until the cutover moves ts/ to the root) or ./contract.
 const { spawnSync } = require("child_process");
 const fs = require("fs");
 const os = require("os");
 const path = require("path");
 const { pathToFileURL } = require("url");
 
-const ts = path.join(__dirname, ".."); // the package root: ts/ now, the repository root after the cutover
-const contractDir = [path.join(ts, "contract"), path.join(ts, "..", "contract")].find((d) => fs.existsSync(path.join(d, "tests")));
+const root = path.join(__dirname, ".."); // the repository root
+const contractDir = [path.join(root, "contract")].find((d) => fs.existsSync(path.join(d, "tests")));
 
 const readLines = (file) =>
   fs
@@ -124,9 +123,9 @@ function runSuite(dir, env = process.env) {
 module.exports = { judge, runSuite, readLines };
 
 if (require.main === module) {
-  const patterns = readLines(path.join(ts, "contract-skip.txt"));
-  const vacuous = new Set(readLines(path.join(ts, "contract-skip-passing.txt")));
-  const expected = Object.fromEntries(readLines(path.join(ts, "contract-skip.expected")).map((l) => l.split("=").map((s) => s.trim())));
+  const patterns = readLines(path.join(root, "contract-skip.txt"));
+  const vacuous = new Set(readLines(path.join(root, "contract-skip-passing.txt")));
+  const expected = Object.fromEntries(readLines(path.join(root, "contract-skip.expected")).map((l) => l.split("=").map((s) => s.trim())));
   for (const key of ["suite", "skipped", "pass", "dynamic-skips"]) {
     if (!/^[0-9]+$/.test(expected[key] ?? "")) throw new Error(`contract-skip.expected: ${key}=<number> is missing`);
     expected[key] = Number(expected[key]);

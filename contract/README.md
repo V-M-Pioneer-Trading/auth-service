@@ -1,14 +1,16 @@
 # auth-service contract suite
 
-A black-box HTTP suite that pins what auth-service does today. It starts a
+A black-box HTTP suite that pins what auth-service does. It starts a
 container image, wires it to stub upstreams, and talks to it over HTTP. It knows
 nothing about the language the service is written in, so the Go image and the
-TypeScript port are held to the same definition of "same": the suite is green
-against the Go image now, and the TypeScript image must pass it **unchanged**.
+TypeScript port were held to the same definition of "same": the suite was green
+against the Go image, and the TypeScript image passes it **unchanged**. Since the
+cutover (auth-service#17) the Go code is gone and the suite is the parity record
+and a regression gate for the TypeScript service.
 
-If a test here looks wrong, the answer is never to edit it to suit the port. The
-test captures the Go service; if the Go service is wrong, that is a separate,
-deliberate change made on both sides.
+If a test here looks wrong, the answer is never to edit it to suit the code. The
+test captures what the Go service did and what clients depend on; changing it is a
+deliberate, reviewed change to the contract.
 
 ## Running it
 
@@ -24,7 +26,7 @@ runtime dependencies. The only dev dependencies are `typescript` and
 `@types/node`, for `npm run typecheck`. Test code is erasable syntax only (no
 enums, no parameter properties, `import type` for types).
 
-CI is `.github/workflows/contract.yml`, separate from the deploy workflow.
+CI is the `contract` job of `.github/workflows/container.yml`, judged by `scripts/run-contract.cjs` (the `docker` deploy job does not wait for it; branch protection does).
 
 `CONTRACT_BIN=<path to a native executable>` is accepted instead of
 `CONTRACT_IMAGE` for iterating on a machine with no Docker daemon. It runs the
@@ -69,7 +71,7 @@ prints one.
 
 | File | What it pins |
 | --- | --- |
-| `tests/introspect-fixture.test.ts` | the SHA-256 pin of `src/api/testdata/introspection.json`, then **every** one of its 65 cases driven through the container, with the classification totals asserted |
+| `tests/introspect-fixture.test.ts` | the SHA-256 pin of `contract/fixtures/introspection.json`, then **every** one of its 65 cases driven through the container, with the classification totals asserted |
 | `tests/introspect.test.ts` | caller-secret gate, where the token travels, the 8 KiB cap, what verifies and what is `{"active":false}`, `CLERK_ISSUER` |
 | `tests/vault.test.ts` | `GET /auth/v1/token`, both status routes, health routes, the Clerk session gate, Restore Token |
 | `tests/register.test.ts` | Reset Agent: what is sent to SpaceTraders, what is stored, how upstream failures map |

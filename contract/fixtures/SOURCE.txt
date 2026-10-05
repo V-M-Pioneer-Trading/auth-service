@@ -6,7 +6,8 @@ introspection.json in this directory is a VERBATIM copy. Do not edit it here.
   sha256: 90562110d24e47bfdcbf7ff05f1112b4bc840835bf728fa7f6bd81ff67bbeb9c
 
 The sha256 above is the hash of the LF bytes of introspection.json and is
-asserted by introspection_fixture_test.go, so the pin enforces itself instead
+asserted by contract/tests/introspect-fixture.test.ts and by
+src/__tests__/introspectionFixture.test.ts, so the pin enforces itself instead
 of relying on someone remembering to re-copy. The repository's .gitattributes
 marks that one file `-text` so a Windows checkout (core.autocrlf=true) keeps
 the same bytes a Linux checkout has and the hash holds on both.
@@ -20,7 +21,7 @@ auth-service is the CENTER, not a calling service: the `cases` and
 implement. What is normative here is the `contract` block (endpoint, method,
 content type, body template, secret header, env var names) and every `center`
 object inside a case — those are this service's own output. See
-introspection_fixture_test.go, which drives the center through all of them.
+src/__tests__/introspectionFixture.test.ts and contract/tests/introspect-fixture.test.ts, which drive the center through all of them.
 
 The meta commit above is the head of meta pull request #107, "Fixture v6: what
 separates scopes, and top-level keys ignoring case", merged with a merge

@@ -1,10 +1,11 @@
 /**
  * SQLite through node:sqlite. The schema does not change in this port, so a rollback to the Go image opens the file the
  * TypeScript service wrote and the other way round: these tests open a file the Go image's own db package wrote
- * (fixtures/SOURCE.txt) and compare DDL with the Go service's schema.sql.
+ * (fixtures/SOURCE.txt) and compare DDL with it. (Until the cutover these also compared SCHEMA with the Go service's
+ * schema.sql; the Go code is gone, and the Go-written file is what still holds this service to the Go image's DDL.)
  */
 import { createHash } from "node:crypto";
-import { copyFileSync, existsSync, mkdtempSync, readFileSync, rmSync, statSync } from "node:fs";
+import { copyFileSync, mkdtempSync, readFileSync, rmSync, statSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { DatabaseSync } from "node:sqlite";
@@ -17,8 +18,6 @@ import { readStatus } from "../status";
 
 const FIXTURE = join(__dirname, "fixtures", "go-written.db");
 const FIXTURE_SHA256 = "9ca9d183c8fb4b74f36c97eb711705360de01da6c82f4fc12a6d2e036e52f806";
-/** The Go service's schema, while the Go code is still in the repository (the cutover deletes it, and this comparison with it). */
-const GO_SCHEMA = join(__dirname, "..", "..", "..", "src", "db", "schema.sql");
 
 const dirs: string[] = [];
 const scratch = (): string => {
@@ -41,11 +40,6 @@ const master = (db: DatabaseSync): MasterRow[] =>
   db.prepare("SELECT type, name, sql FROM sqlite_master WHERE name NOT LIKE 'sqlite_%' ORDER BY type, name").all() as unknown as MasterRow[];
 
 describe("the schema", () => {
-  (existsSync(GO_SCHEMA) ? it : it.skip)("is the Go service's schema.sql, statement for statement", () => {
-    const go = readFileSync(GO_SCHEMA, "utf8").replace(/\r\n/g, "\n");
-    expect(SCHEMA).toBe(go);
-  });
-
   it("creates the two tables, and applying it twice changes nothing (it runs on every start)", () => {
     const db = openInMemory();
     const once = master(db);

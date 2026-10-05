@@ -1,6 +1,6 @@
 /**
- * Conformance against meta/fixtures/introspection.json, vendored verbatim into fixtures/ (provenance and the sha256 pin
- * in fixtures/SOURCE.txt): the port of the Go service's src/api/introspection_fixture_test.go, case for case.
+ * Conformance against meta/fixtures/introspection.json, vendored verbatim into contract/fixtures/ (provenance and the sha256 pin
+ * in contract/fixtures/SOURCE.txt): the port of the Go service's src/api/introspection_fixture_test.go, case for case.
  *
  * The fixture's `cases` and `gatewayCases` describe what a CALLING SERVICE answers its own caller, which this service
  * does not implement: it is the center. What binds it is the `contract` block (path, method, content type, body
@@ -42,7 +42,8 @@ interface CenterBody {
   kind?: string;
 }
 
-const FIXTURES = join(__dirname, "fixtures");
+// The one copy in the repository is the contract suite's (contract/fixtures): its sha256 pin is in SOURCE.txt beside it.
+const FIXTURES = join(__dirname, "..", "..", "contract", "fixtures");
 const raw = readFileSync(join(FIXTURES, "introspection.json"));
 const fixture = JSON.parse(raw.toString("utf8")) as Fixture;
 
@@ -197,9 +198,9 @@ function classify(c: FixtureCase): [CenterClass, CenterBody | null] {
 const all = [...fixture.cases, ...fixture.gatewayCases];
 
 describe("the vendored fixture is the exact copy it claims to be", () => {
-  it("hashes to the sha256 recorded in fixtures/SOURCE.txt", () => {
+  it("hashes to the sha256 recorded in contract/fixtures/SOURCE.txt", () => {
     const source = readFileSync(join(FIXTURES, "SOURCE.txt"), "utf8");
-    const recorded = /introspection\.json[\s\S]*?sha256 ([0-9a-f]{64})/.exec(source)?.[1];
+    const recorded = /^\s*sha256:\s*([0-9a-f]{64})\s*$/m.exec(source)?.[1];
     expect(recorded).toMatch(/^[0-9a-f]{64}$/);
     // A CRLF checkout would hash differently: .gitattributes keeps it -text.
     expect(raw.includes("\r\n")).toBe(false);

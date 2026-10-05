@@ -1,13 +1,12 @@
 version: 2
 updates:
-  # The TypeScript port (decision 23). Every update is a pull request that must also change ts/dependency-snapshot.txt
-  # (the dependency gate fails otherwise: a Dependabot PR is red until `npm run snapshot:deps` is committed to it),
-  # so the reviewer sees what arrives with it. Express stays on 4 (the other
-  # TypeScript services and tsoa's generated routes target it); @types follow the runtime they describe (Express 4,
-  # Node 24); typescript stays inside what the shared eslint-config accepts (>=5.7 <6.1). Any other major is a reviewed
-  # decision in a PR like the rest.
+  # Every update is a pull request that must also change dependency-snapshot.txt (the dependency gate, the `ts-checks`
+  # job, fails otherwise: a Dependabot PR is red until `npm run snapshot:deps` is committed to it), so the reviewer sees
+  # what arrives with it. Express stays on 4 (the other TypeScript services and tsoa's generated routes target it);
+  # @types follow the runtime they describe (Express 4, Node 24); typescript stays inside what the shared eslint-config
+  # accepts (>=5.7 <6.1). Any other major is a reviewed decision in a PR like the rest.
   - package-ecosystem: npm
-    directory: /ts
+    directory: /
     schedule:
       interval: weekly
     ignore:
@@ -21,8 +20,8 @@ updates:
         update-types: ["version-update:semver-major", "version-update:semver-minor"]
     open-pull-requests-limit: 5
 
-  # ts/Dockerfile: the node:24-slim build stages and the distroless runtime.
+  # Dockerfile: the node:24-slim build stages and the distroless runtime, both pinned by digest.
   - package-ecosystem: docker
-    directory: /ts
+    directory: /
     schedule:
       interval: weekly

@@ -35,12 +35,9 @@ go-verdicts.json
   mediaTypes and queries as [input, verdict] pairs in case order). Keys and tokens are generated per run: the verdicts
   depend on neither, and no private key or signed token is committed.
 
-introspection.json
-  A VERBATIM copy of meta/fixtures/introspection.json (V-M-Pioneer-Trading/meta, fixture version 6), the same bytes the
-  Go service vendors in ../src/api/testdata/introspection.json (meta commit 993fea9eb1c38de03b9bea14d6e03d8b450750cc).
-  Do not edit it here. introspectionFixture.test.ts asserts this hash, so the copy pins itself; .gitattributes keeps the
-  file -text so a Windows checkout holds the same LF bytes.
-  sha256 90562110d24e47bfdcbf7ff05f1112b4bc840835bf728fa7f6bd81ff67bbeb9c
+introspection.json (no longer here)
+  The one copy of meta/fixtures/introspection.json is the contract suite's: contract/fixtures/introspection.json, with its
+  provenance and sha256 pin in contract/fixtures/SOURCE.txt. introspectionFixture.test.ts reads it from there.
 
 go-m2m-verdicts.json
   What the Go service's machine-token code answers on the corpus of src/testSupport/m2mCases.ts, recorded by

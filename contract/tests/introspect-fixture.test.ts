@@ -32,7 +32,7 @@ describe("the vendored fixture is the copy it claims to be", () => {
     assert.equal(
       fixtureSha256(),
       recordedSha256(),
-      "src/api/testdata/introspection.json drifted from meta: re-copy it and update SOURCE.txt (and check .gitattributes still marks it -text)",
+      "contract/fixtures/introspection.json drifted from meta: re-copy it and update SOURCE.txt (and check .gitattributes still marks it -text)",
     );
   });
   it("is version 6 with 51 + 14 cases", () => {
