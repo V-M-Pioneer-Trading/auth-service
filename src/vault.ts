@@ -18,7 +18,7 @@ import type { IncomingMessage } from "node:http";
 import type { DatabaseSync } from "node:sqlite";
 
 import { NoCredentialConfigured, sqliteVaultStore, type Credential, type VaultStore } from "./db/credential";
-import { decodeFirst, firstValueComplete, GoJsonError, type Decoded, type Shape } from "./goJson";
+import { decodeFirst, GoJsonError, type Decoded, type Shape } from "./goJson";
 import { CallerGone, readBody } from "./http/body";
 import { parseQuery } from "./http/goForm";
 import { TextAnswer } from "./http/json";
@@ -151,11 +151,16 @@ export async function sessionGate(req: IncomingMessage, verifier: Verifier, nowM
  */
 async function decodeBody<S extends Shape>(req: IncomingMessage, shape: S, typeName: string): Promise<Decoded<S>> {
   const { bytes, exceeded } = await readBody(req, MAX_OPERATOR_BODY);
-  if (exceeded && !firstValueComplete(bytes)) throw new TextAnswer(400, "invalid request body: http: request body too large");
   try {
     return decodeFirst(bytes, shape, typeName);
   } catch (err) {
-    if (err instanceof GoJsonError) throw new TextAnswer(400, `invalid request body: ${err.message}`);
+    if (err instanceof GoJsonError) {
+      // The first value did not end within the cap: the reader hit the limit, not the end of the body (one pass, not two).
+      if (exceeded && (err.message === "EOF" || err.message === "unexpected EOF")) {
+        throw new TextAnswer(400, "invalid request body: http: request body too large");
+      }
+      throw new TextAnswer(400, `invalid request body: ${err.message}`);
+    }
     throw err;
   }
 }

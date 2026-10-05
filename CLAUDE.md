@@ -159,6 +159,10 @@ base)` for a Location (WHATWG reads `///h`, `/\h`, `http:\\h` as another host wh
   * An operator route reads at most 1 MiB of body; a first JSON value that does not end within it is `400 invalid request
     body: http: request body too large` (Go read the first value without a bound). Nesting deeper than 10000 is Go's
     `invalid character '[' exceeded max depth`; the parser is iterative, so no depth reaches the call stack.
+    Its cost is linear and small (a body at the cap decodes in about 1 to 15 ms, up to 30 ms for the worst shapes; it was ~110 ms and up to 450, auth-service#25): the parser keeps only
+    the values a struct's fields are for and reads the rest for syntax, strings are taken a run of bytes at a time, and
+    `goJsonCost.test.ts` holds generous bounds on it. This event loop also verifies tokens for every service, so keep a
+    synchronous cost per request off it.
   * The bearer credential is parsed as clerk-client's `bearerFrom` (owner, auth-service#15). Node reads the header as
     latin1, so a lone byte 0xA0 separates the scheme from the token here and not in Go, while a UTF-8 non-ASCII space
     (C2 A0, C2 85, ...) separates in Go and not here. ASCII whitespace is the same. Scopes split on SP, TAB, CR, LF only.
