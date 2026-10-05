@@ -42,6 +42,46 @@ export interface KeyCase {
   readonly pem: string;
 }
 
+/** A DER length: minimal, or one byte longer than it needs to be (long form for a short length, a leading zero byte). */
+function derLength(n: number, minimal = true): Buffer {
+  const bytes: number[] = [];
+  for (let v = n; v > 0; v = Math.floor(v / 256)) bytes.unshift(v % 256);
+  if (minimal) return n < 0x80 ? Buffer.from([n]) : Buffer.from([0x80 | bytes.length, ...bytes]);
+  return n < 0x80 ? Buffer.from([0x81, n]) : Buffer.from([0x80 | (bytes.length + 1), 0, ...bytes]);
+}
+
+function derElementOf(tag: number, content: Buffer, minimal = true): Buffer {
+  return Buffer.concat([Buffer.from([tag]), derLength(content.length, minimal), content]);
+}
+
+/** BER's indefinite length (0x80, the content, then 00 00), which DER forbids. */
+function indefinite(tag: number, content: Buffer): Buffer {
+  return Buffer.concat([Buffer.from([tag, 0x80]), content, Buffer.from([0, 0])]);
+}
+
+/** The elements directly inside a constructed element that is itself DER (as every generated key is). */
+function derChildren(der: Buffer): { tag: number; content: Buffer }[] {
+  const at = (i: number): { tag: number; start: number; end: number } => {
+    const first = der[i + 1] ?? 0;
+    const count = first & 0x80 ? first & 0x7f : 0;
+    let length = first & 0x80 ? 0 : first;
+    for (let k = 0; k < count; k++) length = length * 256 + (der[i + 2 + k] ?? 0);
+    const start = i + 2 + count;
+    return { tag: der[i] ?? 0, start, end: start + length };
+  };
+  const outer = at(0);
+  const out: { tag: number; content: Buffer }[] = [];
+  for (let i = outer.start; i < outer.end; ) {
+    const e = at(i);
+    out.push({ tag: e.tag, content: der.subarray(e.start, e.end) });
+    i = e.end;
+  }
+  return out;
+}
+
+/** The content octets of a DER element, rebuilt from its children. */
+const contentOf = (der: Buffer): Buffer => Buffer.concat(derChildren(der).map((c) => derElementOf(c.tag, c.content)));
+
 function armor(label: string, der: Buffer, eol = "\n"): string {
   const lines = der.toString("base64").match(/.{1,64}/g) ?? [];
   return `-----BEGIN ${label}-----${eol}${lines.join(eol)}${eol}-----END ${label}-----${eol}`;
@@ -60,6 +100,13 @@ export function keyCases(): KeyCase[] {
   const e3 = generateKeyPairSync("rsa", { modulusLength: 2048, publicExponent: 3 });
   const good = armor("PUBLIC KEY", rsaPublicSpki);
   const goodBody = rsaPublicSpki.toString("base64");
+  const [algId, bitString] = derChildren(rsaPublicSpki);
+  const [modulus, exponent] = derChildren(rsaPublicPkcs1);
+  if (algId === undefined || bitString === undefined || modulus === undefined || exponent === undefined) throw new Error("unexpected key shape");
+  const spki = (...parts: Buffer[]): Buffer => derElementOf(0x30, Buffer.concat(parts));
+  const algIdDer = derElementOf(0x30, algId.content);
+  const bitStringDer = derElementOf(0x03, bitString.content);
+  const endLine = (ending: string): string => good.replace("-----END PUBLIC KEY-----\n", `-----END PUBLIC KEY-----${ending}`);
 
   return [
     { name: "rsa-spki", pem: good },
@@ -127,5 +174,36 @@ export function keyCases(): KeyCase[] {
     { name: "end-marker-indented", pem: good.replace("-----END", " -----END") },
     { name: "wrong-end-label-then-the-right-one", pem: good.replace("-----END PUBLIC KEY-----", "-----END RSA PUBLIC KEY-----\n-----END PUBLIC KEY-----") },
     { name: "literal-backslash-n-one-line", pem: good.trim().replaceAll("\n", "\\n") },
+    // The END line as Go's getLine reads it: one \r is dropped only right before the \n, then trailing spaces and tabs.
+    { name: "end-line-cr-at-end-of-input", pem: `${good.trimEnd()}\r` },
+    { name: "end-line-two-crs", pem: endLine("\r\r\n") },
+    { name: "end-line-cr-then-space", pem: endLine("\r \n") },
+    { name: "end-line-cr-then-tab", pem: endLine("\r\t\n") },
+    { name: "end-line-space-then-crlf", pem: endLine(" \r\n") },
+    { name: "end-line-tab-then-crlf", pem: endLine("\t\r\n") },
+    { name: "end-line-spaces-at-end-of-input", pem: `${good.trimEnd()} \t ` },
+    // DER lengths: Go's parsers take the minimal encoding only, and BER's indefinite length is not DER.
+    { name: "spki-outer-length-not-minimal", pem: armor("PUBLIC KEY", derElementOf(0x30, contentOf(rsaPublicSpki), false)) },
+    {
+      name: "spki-outer-length-in-five-bytes",
+      pem: armor("PUBLIC KEY", Buffer.concat([Buffer.from([0x30, 0x85, 0, 0, 0]), derLength(contentOf(rsaPublicSpki).length).subarray(1), contentOf(rsaPublicSpki)])),
+    },
+    { name: "spki-algorithm-length-not-minimal", pem: armor("PUBLIC KEY", spki(derElementOf(0x30, algId.content, false), bitStringDer)) },
+    { name: "spki-bit-string-length-not-minimal", pem: armor("PUBLIC KEY", spki(algIdDer, derElementOf(0x03, bitString.content, false))) },
+    {
+      name: "spki-inner-key-length-not-minimal",
+      pem: armor("PUBLIC KEY", spki(algIdDer, derElementOf(0x03, Buffer.concat([Buffer.from([0]), derElementOf(0x30, contentOf(rsaPublicPkcs1), false)])))),
+    },
+    { name: "spki-indefinite-length", pem: armor("PUBLIC KEY", indefinite(0x30, contentOf(rsaPublicSpki))) },
+    { name: "pkcs1-public-outer-length-not-minimal", pem: armor("RSA PUBLIC KEY", derElementOf(0x30, contentOf(rsaPublicPkcs1), false)) },
+    {
+      name: "pkcs1-public-exponent-length-not-minimal",
+      pem: armor("RSA PUBLIC KEY", derElementOf(0x30, Buffer.concat([derElementOf(0x02, modulus.content), derElementOf(0x02, exponent.content, false)]))),
+    },
+    { name: "pkcs1-public-indefinite-length", pem: armor("RSA PUBLIC KEY", indefinite(0x30, contentOf(rsaPublicPkcs1))) },
+    { name: "pkcs8-private-outer-length-not-minimal", pem: armor("PRIVATE KEY", derElementOf(0x30, contentOf(rsaPrivatePkcs8), false)) },
+    { name: "pkcs8-private-indefinite-length", pem: armor("PRIVATE KEY", indefinite(0x30, contentOf(rsaPrivatePkcs8))) },
+    { name: "pkcs1-private-outer-length-not-minimal", pem: armor("RSA PRIVATE KEY", derElementOf(0x30, contentOf(rsaPrivatePkcs1), false)) },
+    { name: "pkcs1-private-indefinite-length", pem: armor("RSA PRIVATE KEY", indefinite(0x30, contentOf(rsaPrivatePkcs1))) },
   ];
 }

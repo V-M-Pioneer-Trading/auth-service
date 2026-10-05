@@ -18,3 +18,26 @@ go-verdicts.json
   keys     golang-jwt v5.3.1 ParseRSAPublicKeyFromPEM / ParseRSAPrivateKeyFromPEM, by the case names of
            src/testSupport/keyCases.ts (the keys are generated per run, so no private key is committed)
   The tests in goUrl.test.ts, goTime.test.ts, goText.test.ts and keys.test.ts hold the TypeScript readers to them.
+
+  The "jwt", "mediaTypes" and "queries" sections and the key cases added in step 7b were recorded by go-recorder.go.txt
+  (Go 1.22.4, golang-jwt v5.3.1; the program, and the Go service's verifyToken in it verbatim but for a fixed clock):
+  jwt         src/api/introspect.go's verifyToken plus writeIntrospection, at nowMs, by the case names of
+              src/testSupport/jwtCases.ts: the exact body Go writes (verifyToken.test.ts)
+  mediaTypes  mime.ParseMediaType of src/testSupport/formCases.ts's Content-Type values: the media type and whether it
+              failed (goParity.test.ts)
+  queries     url.ParseQuery of its query strings: every key's values (hex of the bytes, keys sorted) and whether it
+              failed (goParity.test.ts)
+  To re-record (Go and Node 24 on the PATH), in a scratch directory:
+    cp <this dir>/go-recorder.go.txt main.go && cp <this dir>/go-recorder-input.mjs.txt go-recorder-input.mjs
+    go mod init recorder && go get github.com/golang-jwt/jwt/v5@v5.3.1
+    node go-recorder-input.mjs <ts>/src/testSupport > input.json && go run . input.json > output.json
+  then merge output.json into go-verdicts.json (keys by name; jwt.answers by name with nowMs from input.json; the
+  mediaTypes and queries as [input, verdict] pairs in case order). Keys and tokens are generated per run: the verdicts
+  depend on neither, and no private key or signed token is committed.
+
+introspection.json
+  A VERBATIM copy of meta/fixtures/introspection.json (V-M-Pioneer-Trading/meta, fixture version 6), the same bytes the
+  Go service vendors in ../src/api/testdata/introspection.json (meta commit 993fea9eb1c38de03b9bea14d6e03d8b450750cc).
+  Do not edit it here. introspectionFixture.test.ts asserts this hash, so the copy pins itself; .gitattributes keeps the
+  file -text so a Windows checkout holds the same LF bytes.
+  sha256 90562110d24e47bfdcbf7ff05f1112b4bc840835bf728fa7f6bd81ff67bbeb9c

@@ -4,6 +4,7 @@
 import type { Express } from "express";
 
 import type { Credential, CredentialStore } from "../db/credential";
+import type { IntrospectionDeps } from "../introspection";
 import { parseRfc3339, type GoTime } from "../goTime";
 import { createApp } from "../server";
 
@@ -32,11 +33,15 @@ export function credential(overrides: Partial<Credential> = {}): Credential {
 
 export const storeOf = (row: Credential | undefined): CredentialStore => ({ get: () => row });
 
-export function createTestApp(row?: Credential, extra: { log?: (line: string) => void; store?: CredentialStore; now?: () => number } = {}): Express {
+export function createTestApp(
+  row?: Credential,
+  extra: { log?: (line: string) => void; store?: CredentialStore; now?: () => number; introspection?: IntrospectionDeps } = {},
+): Express {
   return createApp({
     corsAllowedOrigin: TEST_ORIGIN,
     credentials: extra.store ?? storeOf(row),
     now: extra.now ?? (() => NOW),
     ...(extra.log === undefined ? {} : { log: extra.log }),
+    ...(extra.introspection === undefined ? {} : { introspection: extra.introspection }),
   });
 }

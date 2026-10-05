@@ -1,0 +1,26 @@
+// Writes the input of go-recorder.go.txt (see SOURCE.txt): the key, token and form cases of src/testSupport, with
+// a key generated for this run. Node 24 or later (it imports the .ts files directly).
+//
+//   node go-recorder-input.mjs > input.json        (copied out of this directory as go-recorder-input.mjs)
+import { createPublicKey } from "node:crypto";
+import { fileURLToPath, pathToFileURL } from "node:url";
+import { join } from "node:path";
+
+const support = process.argv[2] ?? join(fileURLToPath(import.meta.url), "..", "..", "..", "testSupport");
+const { keyCases } = await import(pathToFileURL(join(support, "keyCases.ts")).href);
+const { jwtCases, jwtCaseKeys, JWT_CASES_NOW_MS } = await import(pathToFileURL(join(support, "jwtCases.ts")).href);
+const { MEDIA_TYPE_CASES, QUERY_CASES } = await import(pathToFileURL(join(support, "formCases.ts")).href);
+const goString = (s) => Buffer.from(s, "latin1").toString("base64");
+
+const keys = jwtCaseKeys();
+const pem = (k) => createPublicKey(k).export({ type: "spki", format: "pem" }).toString();
+process.stdout.write(
+  JSON.stringify({
+    nowMs: JWT_CASES_NOW_MS,
+    keys: { main: pem(keys.main), small: pem(keys.small), e3: pem(keys.e3), big: pem(keys.big) },
+    tokens: jwtCases(keys).map(({ name, token, key, issuer }) => ({ name, token, key, issuer })),
+    keyCases: keyCases().map(({ name, pem }) => ({ name, pem })),
+    mediaTypes: MEDIA_TYPE_CASES.map(goString),
+    queries: QUERY_CASES.map(goString),
+  }),
+);

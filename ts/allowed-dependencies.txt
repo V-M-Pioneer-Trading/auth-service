@@ -7,8 +7,10 @@
 [dependencies]
 @tsoa/runtime                          # decorators and request validation of the generated routes (carries @hapi/* with it, see the snapshot)
 express                                # HTTP server, major version 4 (the other TS services, tsoa's generated routes)
-# jose joins in 7b (introspection): nothing in this step verifies a JWT. clerk-client is not a dependency and will not
-# be: auth-service is the verifier (decision 21), clerk-client is what the other services use to ask it.
+jose                                   # Clerk JWT verification (7b, decision 23): RS256 against the static CLERK_JWT_KEY, no JWKS,
+                                       # no network. Pinned exactly; zero dependencies, no install script (snapshot: one line).
+# clerk-client is not a dependency and will not be: auth-service is the verifier (decision 21), clerk-client is what
+# the other services use to ask it.
 
 [devDependencies]
 # build, test and lint only; none of it is in the runtime image

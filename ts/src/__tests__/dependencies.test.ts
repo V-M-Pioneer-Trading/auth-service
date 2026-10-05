@@ -208,7 +208,7 @@ describe("the eslint-config release tarball (devDependencies only)", () => {
   it("refuses a lockfile entry for it resolved from anywhere else, or at a nested path", () => {
     const a = fresh();
     entry(a.lock, `node_modules/${ESLINT_CONFIG}`).resolved = "https://github.com/attacker/eslint-config/releases/download/v1.0.0/v-m-pioneer-trading-eslint-config-1.0.0.tgz";
-    expect(problems(a.pkg, a.lock)).toMatch(/resolves from https:\/\/github\.com\/attacker/);
+    expect(problems(a.pkg, a.lock)).toMatch(/must resolve from the @v-m-pioneer-trading\/eslint-config release tarball package\.json names, not https:\/\/github\.com\/attacker/);
 
     const b = fresh();
     b.lock.packages["node_modules/foo/node_modules/@v-m-pioneer-trading/eslint-config"] = { ...entry(b.lock, `node_modules/${ESLINT_CONFIG}`) };
@@ -218,7 +218,46 @@ describe("the eslint-config release tarball (devDependencies only)", () => {
   it("is not admitted for any other package name", () => {
     const { pkg, lock } = fresh();
     entry(lock, "node_modules/supertest").resolved = good;
-    expect(problems(pkg, lock)).toMatch(/node_modules\/supertest resolves from https:\/\/github\.com/);
+    expect(problems(pkg, lock)).toMatch(/node_modules\/supertest resolves from a GitHub release asset/);
+  });
+
+  // npm ci downloads package.json's URL when it differs from the lockfile's `resolved`, and then does not check the
+  // lockfile's integrity: a lockfile-only edit to another tag of the same repository would void the pin.
+  const other = "https://github.com/V-M-Pioneer-Trading/eslint-config/releases/download/v1.0.1/v-m-pioneer-trading-eslint-config-1.0.1.tgz";
+
+  it("refuses a lockfile resolved that is another release of the same repository than package.json names", () => {
+    const a = fresh();
+    entry(a.lock, `node_modules/${ESLINT_CONFIG}`).resolved = other;
+    expect(problems(a.pkg, a.lock)).toMatch(/resolves from .*v1\.0\.1.*which is not the URL package\.json's devDependencies names/);
+
+    // Even when the version field is moved along with it.
+    const b = fresh();
+    Object.assign(entry(b.lock, `node_modules/${ESLINT_CONFIG}`), { resolved: other, version: "1.0.1" });
+    expect(problems(b.pkg, b.lock)).toMatch(/which is not the URL package\.json's devDependencies names/);
+  });
+
+  it("refuses package.json moved to another release while the lockfile stays on the old one", () => {
+    const { pkg, lock } = fresh();
+    pkg.devDependencies[ESLINT_CONFIG] = other;
+    expect(problems(pkg, lock)).toMatch(/which is not the URL package\.json's devDependencies names/);
+  });
+
+  it("refuses a lockfile version that is not the release's version", () => {
+    const { pkg, lock } = fresh();
+    entry(lock, `node_modules/${ESLINT_CONFIG}`).version = "1.0.1";
+    expect(problems(pkg, lock)).toMatch(/is version "1\.0\.1" but resolves from the v1\.0\.0 release tarball/);
+  });
+
+  it("refuses its top-level entry resolved from the registry instead of the release package.json names", () => {
+    const { pkg, lock } = fresh();
+    entry(lock, `node_modules/${ESLINT_CONFIG}`).resolved = "https://registry.npmjs.org/@v-m-pioneer-trading/eslint-config/-/eslint-config-1.0.0.tgz";
+    expect(problems(pkg, lock)).toMatch(/must resolve from the @v-m-pioneer-trading\/eslint-config release tarball package\.json names/);
+  });
+
+  it("refuses any other GitHub release asset, for any entry", () => {
+    const { pkg, lock } = fresh();
+    entry(lock, "node_modules/express").resolved = "https://github.com/V-M-Pioneer-Trading/clerk-client/releases/download/v2.0.0/clerk-client-2.0.0.tgz";
+    expect(problems(pkg, lock)).toMatch(/node_modules\/express resolves from a GitHub release asset/);
   });
 });
 

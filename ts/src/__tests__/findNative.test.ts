@@ -78,6 +78,44 @@ describe("compiled code in a tree", () => {
     expect(findNative(dir)).toEqual([join("pkg", "escape") + " (symbolic link)"]);
   });
 
+  it.each([
+    ["MZ and then anything binary, not just 90 00", Buffer.from([0x4d, 0x5a, 0x50, 0x00, 0x02, 0x00])],
+    ["MZ and then a NUL", Buffer.from([0x4d, 0x5a, 0x00])],
+    ["MZ and then bytes that are not UTF-8", Buffer.from([0x4d, 0x5a, 0xff, 0xfe, 0x41])],
+    ["MZ and then a control character", Buffer.from("MZ\u0001\u0002text", "latin1")],
+  ])("finds a PE file by its MZ: %s", (_name, content) => {
+    const dir = tree({ "pkg/x.js": content });
+    expect(findNative(dir)).toHaveLength(1);
+  });
+
+  it("does not take text that starts with MZ for a binary, however long", () => {
+    const dir = tree({
+      "a.js": "MZ is a word\n",
+      "b.md": "MZ",
+      "c.txt": "MZ\tcolumns\r\nand ünïcödé\n",
+      // A multi-byte character cut by the 8 KiB probe is still text.
+      "d.txt": Buffer.concat([Buffer.from("MZ"), Buffer.from("é".repeat(5000))]),
+    });
+    expect(findNative(dir)).toEqual([]);
+  });
+
+  it("follows npm's .bin links, and reports one that leaves the tree or leads nowhere", () => {
+    const outside = tree({ "elsewhere.js": "1" });
+    const dir = tree({ "pkg/real.js": "1", ".bin/placeholder": "1" });
+    try {
+      symlinkSync(join(dir, "pkg", "real.js"), join(dir, ".bin", "inside"));
+      symlinkSync(join(outside, "elsewhere.js"), join(dir, ".bin", "outside"));
+      symlinkSync(join(dir, "pkg", "missing.js"), join(dir, ".bin", "dangling"));
+      symlinkSync("../pkg/real.js", join(dir, ".bin", "relative"));
+    } catch {
+      return; // creating symbolic links needs a privilege on Windows
+    }
+    expect(findNative(dir)).toEqual([
+      `${join(".bin", "dangling")} (symbolic link to nothing)`,
+      `${join(".bin", "outside")} (symbolic link out of the tree)`,
+    ]);
+  });
+
   it("walks every level", () => {
     const dir = tree({ "a/b/c/d/e/deep.js": ELF });
     expect(findNative(dir)).toHaveLength(1);

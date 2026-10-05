@@ -1,0 +1,229 @@
+// The program that recorded the "keys" and "jwt" sections of go-verdicts.json (see SOURCE.txt). Kept as .txt so no
+// Go toolchain is needed by this package. Go 1.22.4 and github.com/golang-jwt/jwt/v5 v5.3.1, the versions in ../src/go.mod
+// of the repository root.
+//
+// verifyToken, scopeStringFrom, Kind and the response types below are copied VERBATIM from the Go service's
+// src/api/introspect.go, with one change: the clock is fixed (jwt.WithTimeFunc), so the verdicts do not depend on when
+// they were recorded. The input is written by go-recorder-input.mjs.txt.
+//
+//	go mod init recorder && go get github.com/golang-jwt/jwt/v5@v5.3.1
+//	node go-recorder-input.mjs > input.json && go run . input.json > output.json
+package main
+
+import (
+	"crypto/rsa"
+	"encoding/base64"
+	"encoding/hex"
+	"encoding/json"
+	"errors"
+	"mime"
+	"net/url"
+	"os"
+	"sort"
+	"strings"
+	"time"
+
+	"github.com/golang-jwt/jwt/v5"
+)
+
+const clockSkewLeeway = 60 // seconds
+
+type VerifiedToken struct {
+	Subject string
+	Scope   string
+	Expiry  int64
+}
+
+func (v VerifiedToken) Kind() string {
+	if strings.HasPrefix(v.Subject, "user_") {
+		return "operator"
+	}
+	return "machine"
+}
+
+var errNotVerified = errors.New("token did not verify")
+
+type verifier struct {
+	publicKey *rsa.PublicKey
+	issuer    string
+	now       time.Time
+}
+
+func issuerOption(issuer string) jwt.ParserOption {
+	if issuer == "" {
+		return func(*jwt.Parser) {}
+	}
+	return jwt.WithIssuer(issuer)
+}
+
+func (v *verifier) verifyToken(token string) (VerifiedToken, error) {
+	if token == "" {
+		return VerifiedToken{}, errNotVerified
+	}
+
+	parsed, err := jwt.Parse(token, func(t *jwt.Token) (interface{}, error) {
+		return v.publicKey, nil
+	},
+		jwt.WithValidMethods([]string{"RS256"}),
+		jwt.WithLeeway(clockSkewLeeway*time.Second),
+		jwt.WithExpirationRequired(),
+		issuerOption(v.issuer),
+		jwt.WithTimeFunc(func() time.Time { return v.now }), // the recorder's one change
+	)
+	if err != nil || !parsed.Valid {
+		return VerifiedToken{}, errNotVerified
+	}
+	claims, ok := parsed.Claims.(jwt.MapClaims)
+	if !ok {
+		return VerifiedToken{}, errNotVerified
+	}
+	sub, ok := claims["sub"].(string)
+	if !ok || sub == "" {
+		return VerifiedToken{}, errNotVerified
+	}
+	exp, err := claims.GetExpirationTime()
+	if err != nil || exp == nil {
+		return VerifiedToken{}, errNotVerified
+	}
+	return VerifiedToken{Subject: sub, Scope: scopeStringFrom(claims), Expiry: exp.Unix()}, nil
+}
+
+func scopeStringFrom(claims jwt.MapClaims) string {
+	switch s := claims["scope"].(type) {
+	case string:
+		return s
+	case []interface{}:
+		parts := make([]string, 0, len(s))
+		for _, item := range s {
+			if str, ok := item.(string); ok {
+				parts = append(parts, str)
+			}
+		}
+		return strings.Join(parts, " ")
+	default:
+		return ""
+	}
+}
+
+type introspectionResponse struct {
+	Active bool   `json:"active"`
+	Sub    string `json:"sub,omitempty"`
+	Scope  string `json:"scope"`
+	Exp    int64  `json:"exp,omitempty"`
+	Kind   string `json:"kind,omitempty"`
+}
+
+type inactiveBody struct {
+	Active bool `json:"active"`
+}
+
+type input struct {
+	NowMs    int64             `json:"nowMs"`
+	Keys     map[string]string `json:"keys"`
+	Tokens   []tokenCase       `json:"tokens"`
+	KeyCases []keyCase         `json:"keyCases"`
+	// Go strings as base64 of their bytes.
+	MediaTypes []string `json:"mediaTypes"`
+	Queries    []string `json:"queries"`
+}
+
+// What a query parses to: every key and its values, all as hex of their bytes, keys sorted.
+type parsedQuery struct {
+	Values [][]string `json:"values"`
+	Failed bool       `json:"failed"`
+}
+
+type parsedMediaType struct {
+	MediaType string `json:"mediaType"` // hex of its bytes
+	Failed    bool   `json:"failed"`
+}
+
+func goString(b64 string) string {
+	b, err := base64.StdEncoding.DecodeString(b64)
+	if err != nil {
+		panic(err)
+	}
+	return string(b)
+}
+
+type tokenCase struct {
+	Name   string `json:"name"`
+	Token  string `json:"token"`
+	Key    string `json:"key"`
+	Issuer string `json:"issuer"`
+}
+
+type keyCase struct {
+	Name string `json:"name"`
+	PEM  string `json:"pem"`
+}
+
+func verdict(err error) string {
+	if err != nil {
+		return "refused"
+	}
+	return "ok"
+}
+
+func main() {
+	raw, err := os.ReadFile(os.Args[1])
+	if err != nil {
+		panic(err)
+	}
+	var in input
+	if err := json.Unmarshal(raw, &in); err != nil {
+		panic(err)
+	}
+	now := time.UnixMilli(in.NowMs)
+
+	keys := map[string]map[string]string{}
+	for _, k := range in.KeyCases {
+		_, pubErr := jwt.ParseRSAPublicKeyFromPEM([]byte(k.PEM))
+		_, privErr := jwt.ParseRSAPrivateKeyFromPEM([]byte(k.PEM))
+		keys[k.Name] = map[string]string{"public": verdict(pubErr), "private": verdict(privErr)}
+	}
+
+	answers := map[string]string{}
+	for _, c := range in.Tokens {
+		key, err := jwt.ParseRSAPublicKeyFromPEM([]byte(in.Keys[c.Key]))
+		if err != nil {
+			panic(c.Name + ": " + err.Error())
+		}
+		v := &verifier{publicKey: key, issuer: c.Issuer, now: now}
+		var body []byte
+		// What writeIntrospection marshals.
+		if verified, err := v.verifyToken(c.Token); err != nil {
+			body, _ = json.Marshal(inactiveBody{Active: false})
+		} else {
+			body, _ = json.Marshal(introspectionResponse{Active: true, Sub: verified.Subject, Scope: verified.Scope, Exp: verified.Expiry, Kind: verified.Kind()})
+		}
+		answers[c.Name] = string(body) // the bytes, so a large exp keeps every digit
+	}
+
+	mediaTypes := []parsedMediaType{}
+	for _, in := range in.MediaTypes {
+		mt, _, err := mime.ParseMediaType(goString(in))
+		mediaTypes = append(mediaTypes, parsedMediaType{MediaType: hex.EncodeToString([]byte(mt)), Failed: err != nil})
+	}
+	queries := []parsedQuery{}
+	for _, in := range in.Queries {
+		values, err := url.ParseQuery(goString(in))
+		names := make([]string, 0, len(values))
+		for k := range values {
+			names = append(names, k)
+		}
+		sort.Strings(names)
+		rows := [][]string{}
+		for _, k := range names {
+			row := []string{hex.EncodeToString([]byte(k))}
+			for _, v := range values[k] {
+				row = append(row, hex.EncodeToString([]byte(v)))
+			}
+			rows = append(rows, row)
+		}
+		queries = append(queries, parsedQuery{Values: rows, Failed: err != nil})
+	}
+
+	out, _ := json.Marshal(map[string]interface{}{"keys": keys, "jwt": answers, "mediaTypes": mediaTypes, "queries": queries})
+	os.Stdout.Write(out)
+}

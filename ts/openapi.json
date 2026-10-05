@@ -38,6 +38,82 @@
         "type": "object",
         "additionalProperties": false
       },
+      "IntrospectionAnswer": {
+        "anyOf": [
+          {
+            "properties": {
+              "active": {
+                "type": "boolean",
+                "enum": [
+                  false
+                ],
+                "nullable": false
+              }
+            },
+            "required": [
+              "active"
+            ],
+            "type": "object"
+          },
+          {
+            "properties": {
+              "kind": {
+                "type": "string",
+                "enum": [
+                  "operator",
+                  "machine"
+                ]
+              },
+              "exp": {
+                "type": "number",
+                "format": "double"
+              },
+              "scope": {
+                "type": "string"
+              },
+              "sub": {
+                "type": "string"
+              },
+              "active": {
+                "type": "boolean",
+                "enum": [
+                  true
+                ],
+                "nullable": false
+              }
+            },
+            "required": [
+              "kind",
+              "exp",
+              "scope",
+              "sub",
+              "active"
+            ],
+            "type": "object"
+          }
+        ]
+      },
+      "IntrospectionRefusal": {
+        "description": "What a refused caller gets.",
+        "properties": {
+          "error": {
+            "properties": {
+              "message": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "message"
+            ],
+            "type": "object"
+          }
+        },
+        "required": [
+          "error"
+        ],
+        "type": "object",
+        "additionalProperties": false
+      },
       "HealthStatus": {
         "properties": {
           "status": {
@@ -108,6 +184,56 @@
         ],
         "security": [],
         "parameters": []
+      }
+    },
+    "/auth/v1/introspect": {
+      "post": {
+        "operationId": "Introspect",
+        "responses": {
+          "200": {
+            "description": "The verdict: `{active:false}`, or `{active:true, sub, scope, exp, kind}` and nothing else",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/IntrospectionAnswer"
+                    },
+                    {
+                      "$ref": "#/components/schemas/IntrospectionRefusal"
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "a valid introspection secret is required",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/IntrospectionRefusal"
+                }
+              }
+            }
+          }
+        },
+        "description": "Verifies a Clerk JWT and says what it carries (RFC 7662). The request body is `application/x-www-form-urlencoded`\nwith `token=<jwt>`, at most 8 KiB, read by this handler with Go's rules; a token in the query string is never\nread. The answer is `{\"active\":false}` for anything that does not verify, with no reason, and is never cacheable.\n`scope` is the token's claim verbatim (an array claim joined with single spaces), `\"\"` when it carries none; `kind`\nis `operator` when `sub` starts `user_`, otherwise `machine`.",
+        "tags": [
+          "introspection"
+        ],
+        "security": [],
+        "parameters": [
+          {
+            "description": "The shared introspection secret (AUTH_INTROSPECTION_SECRET). The first of repeated headers counts.",
+            "in": "header",
+            "name": "X-Introspection-Secret",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ]
       }
     },
     "/health": {
