@@ -37,3 +37,16 @@ export function compute(input: Input, nowMs: number): Status {
   if (next !== null && !isZeroTime(next) && nowMs >= next.ms - WIPE_WINDOW_MS) return { ...status, state: "WIPE_IMMINENT" };
   return { ...status, state: "HEALTHY" };
 }
+
+export const DAY_MS = 24 * 3600 * 1000;
+export const HOUR_MS = 3600 * 1000;
+
+/**
+ * NextPollInterval, decision 7's cadence: once a day, hourly from 24 h before a predicted reset on (and after it has
+ * passed, until a poll brings a new prediction). It only decides how often the prediction is refreshed, never
+ * WIPE_IMMINENT itself: `compute` compares the clock independently, so a missed poll cannot shrink the warning window.
+ */
+export function nextPollInterval(nowMs: number, nextPredictedReset: GoTime | null): number {
+  if (nextPredictedReset === null || isZeroTime(nextPredictedReset)) return DAY_MS;
+  return nowMs >= nextPredictedReset.ms - WIPE_WINDOW_MS ? HOUR_MS : DAY_MS;
+}

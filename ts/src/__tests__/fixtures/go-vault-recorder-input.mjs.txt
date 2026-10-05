@@ -1,0 +1,65 @@
+// Writes the input of go-vault-recorder.go.txt (see SOURCE.txt): the corpus of request and upstream bodies and of
+// SpaceTraders dates the vault's Go-compatible readers are held to. Kept as .txt so nothing here is run by the package.
+//
+//   node go-vault-recorder-input.mjs > input.json
+//
+// A body is written as a JavaScript string whose every char is one byte (so invalid UTF-8 can be spelled), and handed
+// to Go as hex. `u8` spells a string's UTF-8 bytes.
+const u8 = (s) => Buffer.from(s, "utf8").toString("latin1");
+
+const bodies = [
+  // The first value, and what follows it.
+  "", " ", "\t\r\n", "{", "}", "[]", "[", "null", " null ", "nulls", "nul", "nulx", "true", "truex", "false", "42", "42x", "-", "-0", "0123",
+  "1.", ".5", '"str"', '"a"x', "{}", "{} trailing", "{}{", "{}}", "{},", " \t\n\r{}", "\f{}", "\v{}", u8(" {}"), u8("﻿{}"),
+  // Restore Token's body.
+  '{"agentToken":"x"}', '{"agentToken":"x"} trailing', '{"agentToken":"x"}garbage{', '{"agentToken":"x"}\n{"agentToken":"y"}',
+  '{"AGENTTOKEN":"upper"}', '{"agenttoken":"lower"}', '{"AgentToken":"camel"}', u8('{"agentToKen":"kelvin"}'), u8('{"agenttoKen":"kelvin2"}'),
+  '{"agentToken":"first","agentToken":"second"}', '{"agentToken":"a","AGENTTOKEN":"b"}', '{"AGENTTOKEN":"b","agentToken":"a"}',
+  '{"agentToken":5}', '{"agentToken":null}', '{"agentToken":"a","agentToken":null}', '{"agentToken":true}', '{"agentToken":{"a":1}}',
+  '{"agentToken":["x"]}', '{"agentToken":5,"agentToken":"later"}', '{"agentToken":"x",}', '{"agentToken" "x"}', "{'agentToken':'x'}",
+  '{"agentToken":"x"', '{"agentToken":"x', '{"agentToken":', '{"agentToken"', '{"agent', '{"agentToken":"x"]', '{"agentToken":"x" "y"}',
+  '{"agentToken":"  spaced token\\t"}', '{"agentToken":""}', '{"other":"x"}', '{"unknown":{"a":[1,2,{"b":null}]},"agentToken":"deep"}',
+  // Escapes, surrogates, control characters.
+  '{"agentToken":"\\u00e9\\ud83d\\ude00"}', '{"agentToken":"\\ud800"}', '{"agentToken":"\\ud800\\u0041"}', '{"agentToken":"\\udc00\\ud800"}',
+  '{"agentToken":"\\ud800\\ud800\\udc00"}', '{"agentToken":"\\ud83d"}', '{"agentToken":"\\uDE00\\uD83D\\uDE00"}', '{"agentToken":"\\u0000"}',
+  '{"agentToken":"\\x41"}', '{"agentToken":"\\u12"}', '{"agentToken":"\\u12G4"}', '{"agentToken":"\\/\\b\\f\\n\\r\\t\\"\\\\"}',
+  '{"agentToken":"a\nb"}', '{"agentToken":"a\tb"}', '{"agentToken":"a\x7fb"}', '{"agentToken":"a\x1fb"}',
+  // UTF-8, valid and not.
+  '{"agentToken":"\xc3\xa9"}', '{"agentToken":"\xff"}', '{"agentToken":"\xc3"}', '{"agentToken":"\xe2\x82x"}', '{"agentToken":"\xed\xa0\x80"}',
+  '{"agentToken":"\xf0\x9f\x98\x80"}', '{"agentToken":"\xc0\xaf"}', '{"agentToken":"\xe0\x80\x80"}', '{"agentToken":"\xf4\x90\x80\x80"}',
+  '{"agentToken":"\xf0\x9f\x98"}', '{"agentToken":"\x80\x80"}', '{"agentToken":"\xef\xbf\xbd"}', '{"agent\xffToken":"badkey"}',
+  '{"agentToken":"x"}\xff', '\xff{"agentToken":"x"}',
+  // Reset Agent's body.
+  '{"accountToken":"t","symbol":"S","faction":"F","email":"e"}', '{"accountToken":"t","symbol":"S","faction":"F"}',
+  '{"ACCOUNTTOKEN":"t","Symbol":"mixed","FACTION":"F","unknown":[1],"x":null} trailing', u8('{"accountToken":"t","ſymbol":"longs","faction":"F"}'),
+  u8('{"accountToken":"t","symbol":"S","factIon":"F","emaıl":"dotless"}'), u8('{"emaİl":"dotted","accountToken":"t"}'),
+  u8('{"emaìl":"grave"}'), u8('{"Key":"k"}'), '{"email":5,"accountToken":"t","symbol":"A","faction":"B"}', '{"symbol":["A"]}',
+  '{"accountToken":1,"symbol":"A","faction":"B"}', '{"accountToken":null,"symbol":"A","faction":"B"}', '{"symbol":"A","faction":"B","email":null}',
+  '{"accountToken":"spaced tok en","symbol":"\xc3\xbcn\xc3\xaf","faction":"x y"}',
+  // Numbers in unknown keys (only their syntax matters).
+  '{"u":1e400}', '{"u":-0.5e-3}', '{"u":01}', '{"u":1.}', '{"u":.5}', '{"u":+1}', '{"u":1e}', '{"u":1e+}', '{"u":-}', '{"u":1E5}', '{"u":-0}',
+  '{"u":0x10}', '{"u":NaN}', '{"u":Infinity}', '{"u":tru}', '{"u":nul}', '{"u":[1,]}', '{"u":[,1]}', '{"u":[1 2]}',
+  // The root SpaceTraders answers.
+  '{"resetDate":"2026-09-01","serverResets":{"next":"2099-01-01T00:00:00Z","frequency":"weekly"}}', '{"resetDate":5}', '{"serverResets":"x"}',
+  '{"serverResets":null}', '{"serverResets":[]}', '{"RESETDATE":"d","SERVERRESETS":{"NEXT":"n","Frequency":"f"}}', '{"resetdate":"d","resetDate":"e"}',
+  '{"serverResets":{"next":1}}', '{"resetDate":"x","status":"SpaceTraders is currently online","stats":{"agents":1}}',
+  // What registration answers.
+  '{"data":{"token":"t","agent":{"symbol":"S","credits":1}}}', '{"data":{"token":"t","agent":{"symbol":"S","credits":1.0}}}',
+  '{"data":{"agent":{"credits":1e2}}}', '{"data":{"agent":{"credits":-0}}}', '{"data":{"agent":{"credits":9223372036854775807}}}',
+  '{"data":{"agent":{"credits":9223372036854775808}}}', '{"data":{"agent":{"credits":-9223372036854775808}}}', '{"data":{"agent":{"credits":-9223372036854775809}}}',
+  '{"data":{"agent":{"credits":"1"}}}', '{"data":{"agent":{"credits":true}}}', '{"data":{"agent":{"credits":null}}}', '{"data":null}', '{"data":[]}',
+  '{"data":{"agent":{"credits":1.5}},"x":1}', '{"data":{"token":"","agent":{"symbol":"EMPTY","credits":0}}}', '{"data":{"agent":{"symbol":"NOTOKEN"}}}',
+  '{"data":{"token":"t-200","extra":[1],"agent":{"symbol":"S","credits":9,"more":{}}},"meta":{}}', '{"DATA":{"TOKEN":"up"}}', "<html></html>", "not json",
+];
+
+const flexibleTimes = [
+  "", "2026-09-01", "2026-9-01", "2026-09-1", "2026-02-29", "2024-02-29", "2026-04-31", "2026-04-30", "0000-01-01", "0001-01-01", "9999-12-31",
+  "0001-01-01T00:00:00Z", "0001-01-01T02:00:00+02:00", "0001-01-01T00:00:00.000000001Z", "0001-01-01T00:00:00.001Z",
+  "2026-09-01T00:00:00.123456789Z", "2026-09-01T00:00:00.0001Z", "2026-09-01T00:00:00.1234567891Z", "2026-09-01T00:00:00,5Z",
+  " 2026-09-01", "2026-09-01 ", "2026-09-01T", "20260901", "2026/09/01", "not-a-date", "2099/01/01", "+2026-09-01", "2026-13-01", "2026-00-10",
+  "2026-01-00", u8("２026-01-01"), "2026-09-01Z", "2026-09-01T08:30:00+02:00", "2099-03-04T05:06:07.891+05:30", "2026-09-01t00:00:00z",
+  "2099-01-01T00:00:00Z", "2020-01-01T00:00:00Z", "2026-09-01T00:00:00", "2026-09-01T24:00:00Z", "2026-09-01T00:00:00-00:00",
+];
+
+const hex = (s) => Buffer.from(s, "latin1").toString("hex");
+process.stdout.write(JSON.stringify({ bodies: bodies.map(hex), flexibleTimes: flexibleTimes.map(hex) }));

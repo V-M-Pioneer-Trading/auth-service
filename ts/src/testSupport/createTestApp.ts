@@ -7,6 +7,7 @@ import type { Credential, CredentialStore } from "../db/credential";
 import type { IntrospectionDeps } from "../introspection";
 import { parseRfc3339, type GoTime } from "../goTime";
 import { createApp } from "../server";
+import type { VaultDeps } from "../vault";
 
 export const TEST_ORIGIN = "https://dashboard.contract.example";
 export const NOW = Date.parse("2026-10-04T12:00:00Z");
@@ -35,7 +36,7 @@ export const storeOf = (row: Credential | undefined): CredentialStore => ({ get:
 
 export function createTestApp(
   row?: Credential,
-  extra: { log?: (line: string) => void; store?: CredentialStore; now?: () => number; introspection?: IntrospectionDeps } = {},
+  extra: { log?: (line: string) => void; store?: CredentialStore; now?: () => number; introspection?: IntrospectionDeps; vault?: VaultDeps } = {},
 ): Express {
   return createApp({
     corsAllowedOrigin: TEST_ORIGIN,
@@ -43,5 +44,6 @@ export function createTestApp(
     now: extra.now ?? (() => NOW),
     ...(extra.log === undefined ? {} : { log: extra.log }),
     ...(extra.introspection === undefined ? {} : { introspection: extra.introspection }),
+    ...(extra.vault === undefined ? {} : { vault: extra.vault }),
   });
 }

@@ -7,6 +7,40 @@
     "requestBodies": {},
     "responses": {},
     "schemas": {
+      "AgentToken": {
+        "description": "The game credential, for st-gateway alone.",
+        "properties": {
+          "agentToken": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "agentToken"
+        ],
+        "type": "object",
+        "additionalProperties": false
+      },
+      "VaultRefusal": {
+        "description": "The `{\"error\":{\"message\":…}}` envelope of a refused caller.",
+        "properties": {
+          "error": {
+            "properties": {
+              "message": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "message"
+            ],
+            "type": "object"
+          }
+        },
+        "required": [
+          "error"
+        ],
+        "type": "object",
+        "additionalProperties": false
+      },
       "State": {
         "type": "string",
         "enum": [
@@ -34,6 +68,104 @@
         },
         "required": [
           "state"
+        ],
+        "type": "object",
+        "additionalProperties": false
+      },
+      "Restored": {
+        "properties": {
+          "status": {
+            "type": "string",
+            "enum": [
+              "restored"
+            ],
+            "nullable": false
+          }
+        },
+        "required": [
+          "status"
+        ],
+        "type": "object",
+        "additionalProperties": false
+      },
+      "SessionRefusal": {
+        "description": "The `{\"error\":{\"message\":…}}` envelope of a refused session.",
+        "properties": {
+          "error": {
+            "properties": {
+              "message": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "message"
+            ],
+            "type": "object"
+          }
+        },
+        "required": [
+          "error"
+        ],
+        "type": "object",
+        "additionalProperties": false
+      },
+      "RestoreTokenRequest": {
+        "description": "Restore Token's body, decoded as Go's encoding/json would: key case ignored, unknown keys ignored.",
+        "properties": {
+          "agentToken": {
+            "type": "string",
+            "description": "The regenerated agent token, stored verbatim."
+          }
+        },
+        "required": [
+          "agentToken"
+        ],
+        "type": "object",
+        "additionalProperties": false
+      },
+      "Registered": {
+        "properties": {
+          "agentSymbol": {
+            "type": "string",
+            "description": "The symbol SpaceTraders answered, not necessarily the one asked for."
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "registered"
+            ],
+            "nullable": false
+          }
+        },
+        "required": [
+          "agentSymbol",
+          "status"
+        ],
+        "type": "object",
+        "additionalProperties": false
+      },
+      "RegisterRequest": {
+        "description": "Reset Agent's body, decoded the same way.",
+        "properties": {
+          "accountToken": {
+            "type": "string",
+            "description": "The SpaceTraders account token: stored, never answered, never logged."
+          },
+          "symbol": {
+            "type": "string"
+          },
+          "faction": {
+            "type": "string"
+          },
+          "email": {
+            "type": "string",
+            "description": "Reserves the call sign across a reset; left out upstream when empty."
+          }
+        },
+        "required": [
+          "accountToken",
+          "symbol",
+          "faction"
         ],
         "type": "object",
         "additionalProperties": false
@@ -170,6 +302,75 @@
     "contact": {}
   },
   "paths": {
+    "/auth/v1/token": {
+      "get": {
+        "operationId": "Token",
+        "responses": {
+          "200": {
+            "description": "The agent token",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/AgentToken"
+                    },
+                    {
+                      "$ref": "#/components/schemas/VaultRefusal"
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "invalid or missing shared secret",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/VaultRefusal"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "no agent token configured (text/plain)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          }
+        },
+        "description": "The agent token st-gateway injects on every upstream call. Gated by the shared secret, compared in constant time;\na secret in the query string is never read. With `afterUnauthorized=true` (exactly) a forced poll of SpaceTraders\nruns before the answer, at most once per 10 s process-wide, and may replace the token (a wipe re-registers).\n`503` text `no agent token configured` while nothing is stored or the stored token is empty. The token answer has\nno `Cache-Control`, as Go's had none: decision 23 allows `no-store` here, but 15 cases of the contract suite pin\nthe header's absence on this answer (only one accepts either), and contract/ is never edited by a port.",
+        "tags": [
+          "vault"
+        ],
+        "security": [],
+        "parameters": [
+          {
+            "description": "AUTH_SERVICE_SHARED_SECRET. The first of repeated headers counts.",
+            "in": "header",
+            "name": "X-Auth-Service-Secret",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "`true` when st-gateway just saw SpaceTraders answer 401.",
+            "in": "query",
+            "name": "afterUnauthorized",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ]
+      }
+    },
     "/auth/v1/status": {
       "get": {
         "operationId": "Status",
@@ -214,6 +415,186 @@
         ],
         "security": [],
         "parameters": []
+      }
+    },
+    "/api/auth/v1/agent-token": {
+      "post": {
+        "operationId": "Restore",
+        "responses": {
+          "200": {
+            "description": "Restored",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/Restored"
+                    },
+                    {
+                      "$ref": "#/components/schemas/SessionRefusal"
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "agentToken is required, or invalid request body: … (text/plain)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "a bearer token is required / invalid or expired session",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SessionRefusal"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "this action requires a scope this session does not carry",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SessionRefusal"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "no credential configured to restore a token onto (text/plain)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          }
+        },
+        "description": "Restore Token (decision 8): replaces only the agent token of the agent already registered and clears\nAPP_TOKEN_EXPIRED. No upstream call. `409` (text) when nothing is registered, `400` (text) for a missing token or\na body that does not decode.",
+        "tags": [
+          "operator"
+        ],
+        "security": [],
+        "parameters": [
+          {
+            "description": "`Bearer <Clerk session JWT>` carrying `agent:reset`. The first of repeated headers counts.",
+            "in": "header",
+            "name": "Authorization",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": false,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RestoreTokenRequest"
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/auth/v1/register": {
+      "post": {
+        "operationId": "Register",
+        "responses": {
+          "200": {
+            "description": "Registered",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/Registered"
+                    },
+                    {
+                      "$ref": "#/components/schemas/SessionRefusal"
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "accountToken, symbol and faction are required, or invalid request body: … (text/plain)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "a bearer token is required / invalid or expired session",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SessionRefusal"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "this action requires a scope this session does not carry",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SessionRefusal"
+                }
+              }
+            }
+          },
+          "502": {
+            "description": "SpaceTraders could not be reached or answered something unusable (text/plain)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          }
+        },
+        "description": "Reset Agent (decision 7): registers with SpaceTraders through st-gateway (`POST /proxy/register`, the account\ntoken as the bearer), replaces the stored credential wholesale, then polls the root once for the dates. An\nupstream 4xx/5xx is passed through as text `POST /register: <upstream body>`; a transport failure or an unusable\n2xx is `502`.",
+        "tags": [
+          "operator"
+        ],
+        "security": [],
+        "parameters": [
+          {
+            "description": "`Bearer <Clerk session JWT>` carrying `agent:reset`. The first of repeated headers counts.",
+            "in": "header",
+            "name": "Authorization",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": false,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RegisterRequest"
+              }
+            }
+          }
+        }
       }
     },
     "/auth/v1/m2m-token": {

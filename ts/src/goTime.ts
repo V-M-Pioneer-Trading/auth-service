@@ -8,7 +8,8 @@
  * not is accepted too (a one-digit hour, a comma before the fraction, an offset of 25:00), because
  * `time.Parse` falls back to it.
  *
- * Only whole milliseconds are kept of a fraction: nothing here compares closer than that.
+ * The instant is kept in whole milliseconds (`ms`) and the fraction to the nanosecond (`nanos`, Go keeps nine digits),
+ * so that two dates compare as Go's `Time.Equal` compares them (the poller's wipe detection).
  */
 
 export interface GoTime {
@@ -23,13 +24,18 @@ export interface GoTime {
   readonly hour: number;
   readonly minute: number;
   readonly second: number;
+  /** The fraction of the second in nanoseconds, as Go keeps it (nine digits, the rest dropped). */
+  readonly nanos: number;
 }
 
 /** Go's zero `time.Time`, 0001-01-01T00:00:00Z, in milliseconds since the epoch. */
 export const ZERO_TIME_MS = -62135596800000;
 
 /** Go's `Time.IsZero`: the instant, whatever the zone. */
-export const isZeroTime = (t: GoTime | null): boolean => t === null || t.ms === ZERO_TIME_MS;
+export const isZeroTime = (t: GoTime | null): boolean => t === null || (t.ms === ZERO_TIME_MS && t.nanos % 1_000_000 === 0);
+
+/** Go's `Time.Equal`: the same instant, whatever the zones. */
+export const sameInstant = (a: GoTime, b: GoTime): boolean => a.ms === b.ms && a.nanos === b.nanos;
 
 const isDigit = (s: string, i: number): boolean => i < s.length && s.charCodeAt(i) >= 0x30 && s.charCodeAt(i) <= 0x39;
 
@@ -77,10 +83,12 @@ export function parseRfc3339(s: string): GoTime | null {
   i = second.next;
   // A fraction the layout does not mention is accepted after the seconds, with a period or a comma.
   let millis = 0;
+  let nanos = 0;
   if (s.length - i >= 2 && (s[i] === "." || s[i] === ",") && isDigit(s, i + 1)) {
     let n = i + 2;
     while (isDigit(s, n)) n++;
     millis = Number((s.slice(i + 1, n) + "000").slice(0, 3));
+    nanos = Number((s.slice(i + 1, n) + "000000000").slice(0, 9));
     i = n;
   }
   // The zone: Z, or a sign and hh:mm. Go 1.22 range-checks neither the hour nor the minute (+25:00 and +23:61 parse), and
@@ -113,6 +121,7 @@ export function parseRfc3339(s: string): GoTime | null {
     hour: hour.value,
     minute: minute.value,
     second: second.value,
+    nanos,
   };
 }
 
@@ -124,4 +133,21 @@ export function formatRfc3339(t: GoTime): string {
   if (t.offsetMinutes === 0) return `${wall}Z`;
   const abs = Math.abs(t.offsetMinutes);
   return `${wall}${t.offsetMinutes < 0 ? "-" : "+"}${pad(Math.floor(abs / 60), 2)}:${pad(abs % 60, 2)}`;
+}
+
+/**
+ * `time.Parse("2006-01-02", s)`: four digits, two, two, nothing after, the day in range for the month. Midnight UTC
+ * (`Z`). Null where Go returns an error.
+ */
+export function parseDateOnly(s: string): GoTime | null {
+  const m = /^([0-9]{4})-([0-9]{2})-([0-9]{2})$/.exec(s);
+  if (m === null) return null;
+  const year = Number(m[1]);
+  const month = Number(m[2]);
+  const day = Number(m[3]);
+  if (month < 1 || month > 12 || day < 1 || day > daysIn(month, year)) return null;
+  const date = new Date(0);
+  date.setUTCFullYear(year, month - 1, day);
+  date.setUTCHours(0, 0, 0, 0);
+  return { ms: date.getTime(), offsetMinutes: 0, year, month, day, hour: 0, minute: 0, second: 0, nanos: 0 };
 }

@@ -4,6 +4,6 @@
 # pass    = cases outside the list, all of which pass
 # dynamic-skips = t.skip() calls inside the suite itself (the introspection fixture's client-only cases)
 suite=320
-skipped=63
-pass=230
+skipped=0
+pass=293
 dynamic-skips=27

@@ -1,0 +1,134 @@
+// The program that recorded go-vault-verdicts.json (see SOURCE.txt). Kept as .txt so no Go toolchain is needed by this
+// package. Go 1.22.4, the version in ../src/go.mod of the repository root; standard library only.
+//
+// The request types are copied VERBATIM from the Go service's src/api/routes.go, the upstream types and
+// parseFlexibleTime from src/spacetraders/client.go, and each is decoded the way the service decodes it:
+// json.NewDecoder(r.Body).Decode for the operator routes' bodies, json.Unmarshal for what SpaceTraders answers.
+//
+//	go mod init recorder
+//	node go-vault-recorder-input.mjs > input.json && go run . input.json > output.json
+package main
+
+import (
+	"bytes"
+	"encoding/hex"
+	"encoding/json"
+	"fmt"
+	"os"
+	"strconv"
+	"time"
+)
+
+type restoreTokenRequest struct {
+	AgentToken string `json:"agentToken"`
+}
+
+type registerRequest struct {
+	AccountToken string `json:"accountToken"`
+	Symbol       string `json:"symbol"`
+	Faction      string `json:"faction"`
+	Email        string `json:"email,omitempty"`
+}
+
+type rawRootResponse struct {
+	ResetDate    string `json:"resetDate"`
+	ServerResets struct {
+		Next      string `json:"next"`
+		Frequency string `json:"frequency"`
+	} `json:"serverResets"`
+}
+
+type rawRegisterResponse struct {
+	Data struct {
+		Token string `json:"token"`
+		Agent struct {
+			Symbol  string `json:"symbol"`
+			Credits int    `json:"credits"`
+		} `json:"agent"`
+	} `json:"data"`
+}
+
+func parseFlexibleTime(s string) time.Time {
+	if s == "" {
+		return time.Time{}
+	}
+	for _, layout := range []string{time.RFC3339, "2006-01-02"} {
+		if t, err := time.Parse(layout, s); err == nil {
+			return t
+		}
+	}
+	return time.Time{}
+}
+
+// A verdict: "error", or the decoded fields as name=hex(UTF-8 bytes), in a fixed order.
+func fields(err error, kv ...string) string {
+	if err != nil {
+		return "error"
+	}
+	out := ""
+	for i := 0; i+1 < len(kv); i += 2 {
+		if out != "" {
+			out += " "
+		}
+		out += kv[i] + "=" + hex.EncodeToString([]byte(kv[i+1]))
+	}
+	return out
+}
+
+func main() {
+	raw, err := os.ReadFile(os.Args[1])
+	if err != nil {
+		panic(err)
+	}
+	var input struct {
+		Bodies        []string `json:"bodies"`
+		FlexibleTimes []string `json:"flexibleTimes"`
+	}
+	if err := json.Unmarshal(raw, &input); err != nil {
+		panic(err)
+	}
+
+	type bodyVerdict struct {
+		Restore          string `json:"restore"`
+		Register         string `json:"register"`
+		Root             string `json:"root"`
+		RegisterResponse string `json:"registerResponse"`
+	}
+	bodies := [][2]interface{}{}
+	for _, h := range input.Bodies {
+		b, _ := hex.DecodeString(h)
+		var v bodyVerdict
+		var restore restoreTokenRequest
+		err := json.NewDecoder(bytes.NewReader(b)).Decode(&restore)
+		v.Restore = fields(err, "agentToken", restore.AgentToken)
+		var reg registerRequest
+		err = json.NewDecoder(bytes.NewReader(b)).Decode(&reg)
+		v.Register = fields(err, "accountToken", reg.AccountToken, "symbol", reg.Symbol, "faction", reg.Faction, "email", reg.Email)
+		var root rawRootResponse
+		err = json.Unmarshal(b, &root)
+		v.Root = fields(err, "resetDate", root.ResetDate, "next", root.ServerResets.Next, "frequency", root.ServerResets.Frequency)
+		var rr rawRegisterResponse
+		err = json.Unmarshal(b, &rr)
+		v.RegisterResponse = fields(err, "token", rr.Data.Token, "symbol", rr.Data.Agent.Symbol, "credits", strconv.Itoa(rr.Data.Agent.Credits))
+		bodies = append(bodies, [2]interface{}{h, v})
+	}
+
+	times := [][2]string{}
+	for _, h := range input.FlexibleTimes {
+		b, _ := hex.DecodeString(h)
+		t := parseFlexibleTime(string(b))
+		verdict := "zero"
+		if !t.IsZero() {
+			verdict = fmt.Sprintf("%s %d %d", t.Format(time.RFC3339), t.Unix(), t.Nanosecond())
+		}
+		times = append(times, [2]string{h, verdict})
+	}
+
+	out, _ := json.MarshalIndent(map[string]interface{}{
+		"goVersion":     "go1.22.4",
+		"bodies":        bodies,
+		"flexibleTimes": times,
+	}, "", " ")
+	os.Stdout.Write(out)
+	os.Stdout.Write([]byte("\n"))
+}
