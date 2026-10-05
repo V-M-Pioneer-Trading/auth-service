@@ -11,9 +11,11 @@
  *  - **Forced polls** (`pollNow`, from `GET /auth/v1/token?afterUnauthorized=true`): at most one per 10 s, process-wide.
  *    The window is taken BEFORE the poll and kept whatever happens to it: a forced poll with no credential, or whose
  *    fetch fails, still opens it (contract README note 27). The first forced poll after start always goes through.
- *  - **No overlapping polls.** Every poll, scheduled, forced or the one after a registration, runs on one queue, so two
- *    never interleave their reads and writes of the row. (Go ran them on separate goroutines; this is the one
- *    deliberate difference, and only timing shows it.) A forced poll inside the window does not wait for the queue.
+ *  - **No overlapping polls, and no operator write inside one.** Every poll (scheduled, forced, the one after a
+ *    registration) and both operator writes (Restore Token, Reset Agent) run on one queue (`exclusive`), so two never
+ *    interleave their reads and writes of the row. Go ran them on separate goroutines, and two of those interleavings
+ *    lost an operator's write. A forced poll inside the window does not wait for the queue; one outside it waits for
+ *    what is in flight, so behind a stuck call it can take up to two upstream timeouts (about 60 s, Go: 30 s).
  *  - **Shutdown** (`stop`): the AbortController ends the wait at once and abandons an upstream call in flight; `stop`
  *    resolves when the poll that was running has settled, so the database can be closed after it.
  *  - The wait between polls is unref'd: in Go the poller goroutine never kept the process alive, the HTTP server did.
@@ -128,10 +130,23 @@ export class Poller {
     return this.tick(true);
   }
 
-  /** Tick, queued behind any poll in flight. Rejects with the poll's error. */
+  /** Tick, queued behind any poll or operator write in flight. Rejects with the poll's error. */
   tick(afterUnauthorized: boolean): Promise<void> {
-    const run = this.queue.then(() => this.pollOnce(afterUnauthorized));
-    this.queue = run.catch(() => undefined);
+    return this.exclusive(() => this.pollOnce(afterUnauthorized));
+  }
+
+  /**
+   * Runs `work` on the poll queue, so that nothing else that reads and writes the row (a poll, a re-registration, the
+   * other operator route) runs meanwhile. The operator routes' writes go through here: in Go they raced with a poll in
+   * flight (a Restore Token landing during a forced poll was undone by its expired flag; a Reset Agent landing during a
+   * re-registration was overwritten with the old account). Resolves or rejects with `work`'s outcome; the queue goes on.
+   */
+  exclusive<T>(work: () => T | Promise<T>): Promise<T> {
+    const run = this.queue.then(work);
+    this.queue = run.then(
+      () => undefined,
+      () => undefined,
+    );
     return run;
   }
 

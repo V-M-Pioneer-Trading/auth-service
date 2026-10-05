@@ -7,7 +7,7 @@ import type { AddressInfo } from "node:net";
 
 import { GoJsonError } from "../goJson";
 import { formatRfc3339 } from "../goTime";
-import { describeError, parseFlexibleTime, spaceTradersClient, TransportError, UPSTREAM_TIMEOUT_MS, UpstreamError } from "../spacetraders/client";
+import { describeError, MAX_REDIRECTS, parseFlexibleTime, spaceTradersClient, TransportError, UPSTREAM_TIMEOUT_MS, UpstreamError } from "../spacetraders/client";
 
 interface Seen {
   method: string;
@@ -200,5 +200,100 @@ describe("parseFlexibleTime", () => {
     expect(parseFlexibleTime("0001-01-01T00:00:00Z")).toBeNull();
     const d = parseFlexibleTime("2026-09-01");
     expect(d && formatRfc3339(d)).toBe("2026-09-01T00:00:00Z");
+  });
+});
+
+describe("redirects, as Go's http.Client follows them", () => {
+  let other: http.Server;
+  let otherBase: string;
+  let otherSeen: Seen[] = [];
+  beforeAll(async () => {
+    other = http.createServer((req, res) => {
+      const chunks: Buffer[] = [];
+      req.on("data", (c: Buffer) => chunks.push(c));
+      req.on("end", () => {
+        otherSeen.push({ method: req.method ?? "", url: req.url ?? "", headers: req.headers, rawHeaders: req.rawHeaders, body: Buffer.concat(chunks) });
+        res.writeHead(201, { "content-type": "application/json" });
+        res.end('{"data":{"token":"from-other","agent":{"symbol":"O"}}}');
+      });
+    });
+    await new Promise<void>((resolve) => other.listen(0, "127.0.0.1", resolve));
+    otherBase = `http://127.0.0.1:${String((other.address() as AddressInfo).port)}`;
+  });
+  afterAll(async () => {
+    other.closeAllConnections();
+    await new Promise((r) => other.close(r));
+  });
+  beforeEach(() => {
+    otherSeen = [];
+  });
+
+  /** Redirects `n` times on the same origin (to /proxy/register?hop=k), then answers. */
+  const chain = (n: number, status = 307) => (req: http.IncomingMessage, res: http.ServerResponse) => {
+    const hop = Number(new URL(req.url ?? "/", "http://x").searchParams.get("hop") ?? "0");
+    if (hop < n) {
+      res.writeHead(status, { location: `/proxy/register?hop=${String(hop + 1)}` });
+      res.end();
+      return;
+    }
+    json(201, `{"data":{"token":"hop-${String(hop)}","agent":{"symbol":"S"}}}`)(req, res);
+  };
+  const register = () => spaceTradersClient({ baseUrl: base }).register("account-token-1", "S", "F", "");
+
+  it("follows a 307 on the same origin with the method, the body and the account token", async () => {
+    reply = chain(1);
+    expect((await register()).agentToken).toBe("hop-1");
+    expect(seen.map((c) => [c.method, c.url, c.headers.authorization, c.body.toString()])).toEqual([
+      ["POST", "/proxy/register", "Bearer account-token-1", '{"symbol":"S","faction":"F"}'],
+      ["POST", "/proxy/register?hop=1", "Bearer account-token-1", '{"symbol":"S","faction":"F"}'],
+    ]);
+  });
+
+  it.each([301, 302, 303])("turns a POST into a GET without a body on a %i", async (status) => {
+    reply = chain(1, status);
+    await register();
+    expect(seen[1]).toMatchObject({ method: "GET", url: "/proxy/register?hop=1" });
+    expect(seen[1]?.body.length).toBe(0);
+    expect(seen[1]?.headers["content-type"]).toBeUndefined();
+  });
+
+  it("follows 9 redirects and refuses the 10th, as Go's 'stopped after 10 redirects'", async () => {
+    reply = chain(9);
+    expect((await register()).agentToken).toBe("hop-9");
+    seen = [];
+    reply = chain(10);
+    const err = await register().catch((e: unknown) => e);
+    expect(err).toBeInstanceOf(TransportError);
+    expect(describeError(err)).toBe("POST /register: stopped after 10 redirects");
+    expect(seen).toHaveLength(10);
+    expect(MAX_REDIRECTS).toBe(10);
+  });
+
+  it("never sends the account token to another origin, another port on the same host included", async () => {
+    reply = (_req, res) => {
+      res.writeHead(307, { location: `${otherBase}/capture` });
+      res.end();
+    };
+    expect((await register()).agentToken).toBe("from-other");
+    expect(otherSeen).toHaveLength(1);
+    expect(otherSeen[0]?.headers.authorization).toBeUndefined();
+    expect(otherSeen[0]?.body.toString()).toBe('{"symbol":"S","faction":"F"}');
+  });
+
+  it("answers with a 307 that has no Location, and refuses a 302 without one or a redirect to another scheme", async () => {
+    reply = json(307, '{"data":{"token":"no-location"}}');
+    expect((await register()).agentToken).toBe("no-location");
+    reply = (_req, res) => {
+      res.writeHead(302);
+      res.end();
+    };
+    expect(describeError(await register().catch((e: unknown) => e))).toBe("POST /register: 302 response missing Location header");
+    for (const location of ["file:///etc/passwd", "data:application/json,{}"]) {
+      reply = (_req, res) => {
+        res.writeHead(307, { location });
+        res.end();
+      };
+      expect(describeError(await register().catch((e: unknown) => e))).toBe("POST /register: unsupported protocol scheme in a redirect");
+    }
   });
 });

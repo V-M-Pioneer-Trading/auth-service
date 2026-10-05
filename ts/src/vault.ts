@@ -26,7 +26,7 @@ import { firstHeader } from "./introspection";
 import type { Verifier } from "./jwt/verify";
 import type { Logger } from "./log";
 import { Poller } from "./poller";
-import { describeError, spaceTradersClient, UpstreamError } from "./spacetraders/client";
+import { describeError, spaceTradersClient, UpstreamError, type RegisterResult } from "./spacetraders/client";
 
 /** The header st-gateway presents to `GET /auth/v1/token`. */
 export const VAULT_SECRET_HEADER = "X-Auth-Service-Secret";
@@ -48,7 +48,7 @@ export interface VaultDeps {
   /** AUTH_SERVICE_SHARED_SECRET, st-gateway's alone. Empty refuses every caller (config.ts never lets it be empty). */
   readonly sharedSecret: string;
   readonly store: VaultStore;
-  readonly poller: Pick<Poller, "pollNow" | "tick" | "register">;
+  readonly poller: Pick<Poller, "pollNow" | "tick" | "register" | "exclusive">;
   /** The service log: failures of best-effort steps, never a credential. */
   readonly log: Logger;
 }
@@ -108,9 +108,10 @@ export async function getToken(req: IncomingMessage, deps: VaultDeps): Promise<{
 /**
  * The bearer token of an `Authorization` value, as clerk-client's `bearerFrom` reads it (the owner's decision on
  * auth-service#15, 2026-10-03): trimmed, split on runs of whitespace, exactly two parts, the scheme `bearer` in any
- * case. JavaScript's `\s`, not Go's `strings.Fields`: the two disagree only on U+0085 (a separator in Go only) and
- * U+FEFF (in JavaScript only), and the owner accepted both. `"Bearer"`, `"Bearer a b"`, `"Basic …"` and a bare token
- * are no credential.
+ * case. `"Bearer"`, `"Bearer a b"`, `"Basic …"` and a bare token are no credential. Node hands the header over as
+ * latin1, one char per byte, and JavaScript's `\s` splits it, where Go's `strings.Fields` splits the UTF-8 runes: so
+ * a lone byte 0xA0 separates here and not in Go, and a UTF-8 NO-BREAK SPACE, NEXT LINE or other non-ASCII space
+ * (C2 A0, C2 85, E2 80 83, ...) separates in Go and not here. ASCII whitespace is the same in both. Accepted by the owner.
  */
 export function bearerFrom(header: string | undefined): string | null {
   if (header === undefined) return null;
@@ -166,17 +167,20 @@ const REGISTER_SHAPE = { accountToken: "string", symbol: "string", faction: "str
 export async function restoreToken(req: IncomingMessage, deps: VaultDeps, nowMs: number): Promise<{ status: "restored" }> {
   const body = await decodeBody(req, RESTORE_SHAPE, "api.restoreTokenRequest");
   if (body.agentToken === "") throw new TextAnswer(400, "agentToken is required");
-  try {
-    deps.store.updateAgentToken(body.agentToken, nowMs);
-  } catch (err) {
-    if (err instanceof NoCredentialConfigured) throw new TextAnswer(409, err.message);
-    throw new TextAnswer(500, describeError(err));
-  }
-  try {
-    deps.store.appendHistory(nowMs, "token_restored", "");
-  } catch (err) {
-    deps.log(`failed to record token_restored: ${describeError(err)}`);
-  }
+  // On the poll queue: a forced poll in flight would otherwise raise the expired flag again after this clears it.
+  await deps.poller.exclusive(() => {
+    try {
+      deps.store.updateAgentToken(body.agentToken, nowMs);
+    } catch (err) {
+      if (err instanceof NoCredentialConfigured) throw new TextAnswer(409, err.message);
+      throw new TextAnswer(500, describeError(err));
+    }
+    try {
+      deps.store.appendHistory(nowMs, "token_restored", "");
+    } catch (err) {
+      deps.log(`failed to record token_restored: ${describeError(err)}`);
+    }
+  });
   return { status: "restored" };
 }
 
@@ -190,7 +194,19 @@ export async function registerAgent(req: IncomingMessage, deps: VaultDeps, nowMs
   const body = await decodeBody(req, REGISTER_SHAPE, "api.registerRequest");
   if (body.accountToken === "" || body.symbol === "" || body.faction === "") throw new TextAnswer(400, "accountToken, symbol and faction are required");
 
-  let result;
+  // Registration and the write, on the poll queue: a re-registration in flight would otherwise write the OLD account
+  // back over this one.
+  const result = await deps.poller.exclusive(() => registerAndStore(body, deps, nowMs));
+  try {
+    await deps.poller.tick(false);
+  } catch (err) {
+    deps.log(`post-registration poll failed: ${describeError(err)}`);
+  }
+  return { agentSymbol: result.agentSymbol, status: "registered" };
+}
+
+async function registerAndStore(body: Decoded<typeof REGISTER_SHAPE>, deps: VaultDeps, nowMs: () => number): Promise<RegisterResult> {
+  let result: RegisterResult;
   try {
     result = await deps.poller.register(body.accountToken, body.symbol, body.faction, body.email);
   } catch (err) {
@@ -215,12 +231,7 @@ export async function registerAgent(req: IncomingMessage, deps: VaultDeps, nowMs
   } catch (err) {
     deps.log(`failed to record registered: ${describeError(err)}`);
   }
-  try {
-    await deps.poller.tick(false);
-  } catch (err) {
-    deps.log(`post-registration poll failed: ${describeError(err)}`);
-  }
-  return { agentSymbol: result.agentSymbol, status: "registered" };
+  return result;
 }
 
 // ---------------------------------------------------------------------------------------------------------------------
@@ -243,6 +254,7 @@ export const CLOSED_VAULT: VaultDeps = {
     pollNow: () => Promise.resolve(),
     tick: () => Promise.resolve(),
     register: () => Promise.reject(new Error("no vault configured")),
+    exclusive: (work) => Promise.resolve().then(work),
   },
   log: () => undefined,
 };

@@ -36,13 +36,24 @@ type Value =
   | { readonly kind: "bool" }
   | { readonly kind: "null" };
 
-/** Go's quoteChar, for a syntax error's message. */
+/**
+ * Go's quoteChar, for a syntax error's message: the byte read as the rune of the same number, quoted as strconv.Quote
+ * quotes it (so a UTF-8 BOM's first byte is 'ï', and 0x85 is '\u0085').
+ */
 function quoteChar(c: number): string {
   if (c === 0x27) return `'\\''`;
   if (c === 0x22) return `'"'`;
-  if (c < 0x20 || c >= 0x7f) return `'\\x${c.toString(16).padStart(2, "0")}'`;
+  const named: Record<number, string> = { 0x07: "a", 0x08: "b", 0x09: "t", 0x0a: "n", 0x0b: "v", 0x0c: "f", 0x0d: "r", 0x5c: "\\" };
+  const name = named[c];
+  if (name !== undefined) return `'\\${name}'`;
+  if (c < 0x20 || c === 0x7f) return `'\\x${c.toString(16).padStart(2, "0")}'`;
+  // strconv.IsPrint is false for the C1 controls, NO-BREAK SPACE and SOFT HYPHEN.
+  if ((c >= 0x80 && c <= 0xa0) || c === 0xad) return `'\\u00${c.toString(16).padStart(2, "0")}'`;
   return `'${String.fromCharCode(c)}'`;
 }
+
+/** Go's scanner refuses nesting deeper than this (maxNestingDepth): the 10001st open bracket is a syntax error. */
+export const MAX_NESTING_DEPTH = 10000;
 
 const isWhite = (c: number | undefined): boolean => c === 0x20 || c === 0x09 || c === 0x0a || c === 0x0d;
 const isDigit = (c: number | undefined): boolean => c !== undefined && c >= 0x30 && c <= 0x39;
@@ -89,20 +100,81 @@ class Parser {
   }
 
   /**
-   * One value. A literal or a number ends at the first byte that cannot continue it, which is all a Decoder's
-   * top-level value needs; inside a container the caller then checks that byte.
+   * One value, without recursion: containers are kept on an explicit stack, so a deeply nested body cannot exhaust the
+   * call stack (Go's scanner refuses more than MAX_NESTING_DEPTH levels, and so does this). A literal or a number ends at
+   * the first byte that cannot continue it, which is all a Decoder's top-level value needs; inside a container the byte
+   * after a value is checked here.
    */
   value(): Value {
+    type Open = { kind: "object"; entries: (readonly [string, Value])[]; key: string } | { kind: "array" };
+    const stack: Open[] = [];
+    for (;;) {
+      // A value starts here.
+      this.skipWhite();
+      const c = this.need();
+      let v: Value | undefined;
+      if (c === 0x7b || c === 0x5b) {
+        if (stack.length >= MAX_NESTING_DEPTH) this.fail(c, "exceeded max depth");
+        this.i++;
+        this.skipWhite();
+        if (c === 0x7b) {
+          if (this.need() === 0x7d) {
+            this.i++;
+            v = { kind: "object", entries: [] };
+          } else {
+            stack.push({ kind: "object", entries: [], key: this.key() });
+            continue;
+          }
+        } else if (this.need() === 0x5d) {
+          this.i++;
+          v = { kind: "array" };
+        } else {
+          stack.push({ kind: "array" });
+          continue;
+        }
+      } else if (c === 0x22) v = { kind: "string", value: this.string() };
+      else if (c === 0x2d || isDigit(c)) v = { kind: "number", text: this.number() };
+      else if (c === 0x74) v = this.literal("true", { kind: "bool" });
+      else if (c === 0x66) v = this.literal("false", { kind: "bool" });
+      else if (c === 0x6e) v = this.literal("null", { kind: "null" });
+      else this.fail(c, "looking for beginning of value");
+
+      // A value ended: hand it to the container it is in, and close containers as long as they end.
+      for (;;) {
+        const top = stack[stack.length - 1];
+        if (top === undefined) return v;
+        if (top.kind === "object") top.entries.push([top.key, v]);
+        this.skipWhite();
+        const next = this.need();
+        this.i++;
+        if (top.kind === "object") {
+          if (next === 0x2c) {
+            top.key = this.key();
+            break;
+          }
+          if (next !== 0x7d) this.fail(next, "after object key:value pair");
+          v = { kind: "object", entries: top.entries };
+        } else {
+          if (next === 0x2c) break;
+          if (next !== 0x5d) this.fail(next, "after array element");
+          v = { kind: "array" };
+        }
+        stack.pop();
+      }
+    }
+  }
+
+  /** An object key and its colon. */
+  private key(): string {
     this.skipWhite();
-    const c = this.need();
-    if (c === 0x7b) return this.object();
-    if (c === 0x5b) return this.array();
-    if (c === 0x22) return { kind: "string", value: this.string() };
-    if (c === 0x2d || isDigit(c)) return { kind: "number", text: this.number() };
-    if (c === 0x74) return this.literal("true", { kind: "bool" });
-    if (c === 0x66) return this.literal("false", { kind: "bool" });
-    if (c === 0x6e) return this.literal("null", { kind: "null" });
-    return this.fail(c, "looking for beginning of value");
+    const q = this.need();
+    if (q !== 0x22) this.fail(q, "looking for beginning of object key string");
+    const key = this.string();
+    this.skipWhite();
+    const colon = this.need();
+    if (colon !== 0x3a) this.fail(colon, "after object key");
+    this.i++;
+    return key;
   }
 
   private literal(word: string, v: Value): Value {
@@ -206,49 +278,6 @@ class Parser {
     }
     return r;
   }
-
-  private object(): Value {
-    this.i++;
-    const entries: (readonly [string, Value])[] = [];
-    this.skipWhite();
-    if (this.need() === 0x7d) {
-      this.i++;
-      return { kind: "object", entries };
-    }
-    for (;;) {
-      this.skipWhite();
-      const q = this.need();
-      if (q !== 0x22) this.fail(q, "looking for beginning of object key string");
-      const key = this.string();
-      this.skipWhite();
-      const colon = this.need();
-      if (colon !== 0x3a) this.fail(colon, "after object key");
-      this.i++;
-      entries.push([key, this.value()]);
-      this.skipWhite();
-      const next = this.need();
-      this.i++;
-      if (next === 0x7d) return { kind: "object", entries };
-      if (next !== 0x2c) this.fail(next, "after object key:value pair");
-    }
-  }
-
-  private array(): Value {
-    this.i++;
-    this.skipWhite();
-    if (this.need() === 0x5d) {
-      this.i++;
-      return { kind: "array" };
-    }
-    for (;;) {
-      this.value();
-      this.skipWhite();
-      const next = this.need();
-      this.i++;
-      if (next === 0x5d) return { kind: "array" };
-      if (next !== 0x2c) this.fail(next, "after array element");
-    }
-  }
 }
 
 /** `json.NewDecoder(body).Decode(&v)`'s read: the first value, the rest never looked at. */
@@ -320,30 +349,37 @@ const MAX_INT64 = 2n ** 63n - 1n;
 
 const typeOf = (v: Value): string => (v.kind === "bool" ? "bool" : v.kind);
 
-/** Decodes `v` into a struct of `shape`, filling `into`; returns the first type error (Go's saveError) or null. */
-function fill(v: Value, shape: Shape, into: Record<string, unknown>, path: string, typeName: string): string | null {
-  if (v.kind === "null") return null;
-  if (v.kind !== "object") return `json: cannot unmarshal ${typeOf(v)} into Go value of type ${typeName}`;
+/**
+ * Decodes `v` into a struct of `shape`, filling `into`; returns the first type error (Go's saveError) or null.
+ * The wording is Go 1.22's UnmarshalTypeError: "Go value of type <package.Type>" for the whole value, and for a field
+ * "Go struct field <S>.<path from the top>", where <S> is the name of the struct the field is in (empty for the
+ * anonymous structs nested in the upstream types).
+ */
+function fill(v: Value, shape: Shape, into: Record<string, unknown>, path: string, structName: string): string | null {
   let first: string | null = null;
   const names = Object.keys(shape);
+  if (v.kind !== "object") return null;
   for (const [key, value] of v.entries) {
     const name = names.find((n) => n === key) ?? names.find((n) => foldName(n) === foldName(key));
     if (name === undefined) continue;
     const type = shape[name];
     if (type === undefined) continue;
     const where = `${path}${path === "" ? "" : "."}${name}`;
+    const field = (what: string, goType: string): string => `json: cannot unmarshal ${what} into Go struct field ${structName}.${where} of type ${goType}`;
     let error: string | null = null;
     if (value.kind === "null") {
       // null leaves the field as it is.
     } else if (type === "string") {
       if (value.kind === "string") into[name] = value.value;
-      else error = `json: cannot unmarshal ${typeOf(value)} into Go struct field ${typeName}.${where} of type string`;
+      else error = field(typeOf(value), "string");
     } else if (type === "int") {
       const n = value.kind === "number" && /^-?[0-9]+$/.test(value.text) ? BigInt(value.text) : null;
       if (n !== null && n >= MIN_INT64 && n <= MAX_INT64) into[name] = n;
-      else error = `json: cannot unmarshal ${value.kind === "number" ? `number ${value.text}` : typeOf(value)} into Go struct field ${typeName}.${where} of type int`;
+      else error = field(value.kind === "number" ? `number ${value.text}` : typeOf(value), "int");
+    } else if (value.kind !== "object") {
+      error = field(typeOf(value), "struct");
     } else {
-      error = fill(value, type, into[name] as Record<string, unknown>, where, typeName);
+      error = fill(value, type, into[name] as Record<string, unknown>, where, "");
     }
     first ??= error;
   }
@@ -352,7 +388,8 @@ function fill(v: Value, shape: Shape, into: Record<string, unknown>, path: strin
 
 function decodeInto<S extends Shape>(v: Value, shape: S, typeName: string): Decoded<S> {
   const out = zero(shape);
-  const error = fill(v, shape, out, "", typeName);
+  if (v.kind !== "object" && v.kind !== "null") throw new GoJsonError(`json: cannot unmarshal ${typeOf(v)} into Go value of type ${typeName}`);
+  const error = fill(v, shape, out, "", typeName.slice(typeName.lastIndexOf(".") + 1));
   if (error !== null) throw new GoJsonError(error);
   return out;
 }

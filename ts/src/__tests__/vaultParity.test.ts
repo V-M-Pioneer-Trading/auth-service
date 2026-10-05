@@ -5,7 +5,7 @@
  * SpaceTraders date is (`parseFlexibleTime`). A reader that drifts from Go changes what an operator's request does, or
  * whether a poll sees a wipe.
  */
-import { decodeFirst, GoJsonError, unmarshal, type Shape } from "../goJson";
+import { decodeFirst, GoJsonError, MAX_NESTING_DEPTH, unmarshal, type Shape } from "../goJson";
 import { formatRfc3339 } from "../goTime";
 import { parseFlexibleTime } from "../spacetraders/client";
 import verdicts from "./fixtures/go-vault-verdicts.json";
@@ -66,20 +66,62 @@ describe("encoding/json as the vault uses it", () => {
     expect(mismatches).toEqual([]);
   });
 
-  it("says why, in the shape of Go's messages, without repeating the body", () => {
-    const why = (s: string): string => {
-      try {
-        decodeFirst(Buffer.from(s, "latin1"), RESTORE, "api.restoreTokenRequest");
-        return "ok";
-      } catch (err) {
-        return (err as Error).message;
-      }
-    };
-    expect(why("")).toBe("EOF");
-    expect(why("{")).toBe("unexpected EOF");
-    expect(why("not json")).toBe("invalid character 'o' in literal null (expecting 'u')");
-    expect(why('{"agentToken": 5}')).toBe("json: cannot unmarshal number into Go struct field api.restoreTokenRequest.agentToken of type string");
+  // Go 1.22's own texts for these inputs, printed by the same types (wording is not pinned by the contract).
+  const why = (s: string, shape: Shape = RESTORE, typeName = "api.restoreTokenRequest", read = decodeFirst): string => {
+    try {
+      read(Buffer.from(s, "latin1"), shape, typeName);
+      return "ok";
+    } catch (err) {
+      return (err as Error).message;
+    }
+  };
+
+  it.each([
+    ["", "EOF"],
+    ["{", "unexpected EOF"],
+    ["not json", "invalid character 'o' in literal null (expecting 'u')"],
+    ['{"agentToken":5}', "json: cannot unmarshal number into Go struct field restoreTokenRequest.agentToken of type string"],
+    ['{"agentToken":true}', "json: cannot unmarshal bool into Go struct field restoreTokenRequest.agentToken of type string"],
+    ['{"agentToken":{}}', "json: cannot unmarshal object into Go struct field restoreTokenRequest.agentToken of type string"],
+    ["[]", "json: cannot unmarshal array into Go value of type api.restoreTokenRequest"],
+    ['"s"', "json: cannot unmarshal string into Go value of type api.restoreTokenRequest"],
+    ["42", "json: cannot unmarshal number into Go value of type api.restoreTokenRequest"],
+    ["\xef\xbb\xbf{}", "invalid character 'ï' looking for beginning of value"],
+    ["\x01", "invalid character '\\x01' looking for beginning of value"],
+    ["\x7f", "invalid character '\\x7f' looking for beginning of value"],
+    ["\x85", "invalid character '\\u0085' looking for beginning of value"],
+    ["\xa0", "invalid character '\\u00a0' looking for beginning of value"],
+    ["\xad", "invalid character '\\u00ad' looking for beginning of value"],
+    ['{"a"\n}', "invalid character '}' after object key"],
+  ])("says why as Go does: %j", (input, go) => {
+    expect(why(input)).toBe(go);
+  });
+
+  it.each([
+    ['{"data":{"agent":{"credits":1.5}}}', "json: cannot unmarshal number 1.5 into Go struct field .data.agent.credits of type int"],
+    ['{"data":{"agent":{"credits":"1"}}}', "json: cannot unmarshal string into Go struct field .data.agent.credits of type int"],
+    ['{"data":{"token":5}}', "json: cannot unmarshal number into Go struct field .data.token of type string"],
+    ["[]", "json: cannot unmarshal array into Go value of type spacetraders.rawRegisterResponse"],
+    ["x", "invalid character 'x' looking for beginning of value"],
+  ])("says why as Go's Unmarshal does: %j", (input, go) => {
+    expect(why(input, REGISTER_RESPONSE, "spacetraders.rawRegisterResponse", unmarshal)).toBe(go);
+  });
+
+  it("never repeats the body", () => {
     expect(why('{"agentToken":"secret-value" "x"}')).not.toContain("secret-value");
+  });
+
+  it("refuses nesting deeper than Go's 10000 levels with Go's error, iteratively (no stack overflow at any depth)", () => {
+    const open = (n: number, c = "["): string => c.repeat(n);
+    // 10000 levels are read (the value is then cut short, as Go's answer for the same bytes says); 10001 are refused.
+    expect(why(open(10000))).toBe("unexpected EOF");
+    expect(why(open(10001))).toBe("invalid character '[' exceeded max depth");
+    expect(why(open(10000) + "]".repeat(10000), RESTORE, "api.restoreTokenRequest")).toBe("json: cannot unmarshal array into Go value of type api.restoreTokenRequest");
+    expect(why(`{"agentToken":"deep","x":${open(9999)}${"]".repeat(9999)}}`)).toBe("ok");
+    expect(why(`{"x":${open(10000)}${"]".repeat(10000)}}`)).toBe("invalid character '[' exceeded max depth");
+    expect(why(open(9000, '{"a":'))).toBe("unexpected EOF");
+    expect(why(open(2_000_000))).toBe("invalid character '[' exceeded max depth");
+    expect(MAX_NESTING_DEPTH).toBe(10000);
   });
 });
 

@@ -110,15 +110,25 @@ text other than through `describeError` (upstream's body can hold anything).
   `nbf` so large that Go's int64 conversion wraps it into the past. None is producible by Clerk.
 
 * The vault (7c):
-  * Polls never overlap: scheduled, forced and post-registration polls run on one queue (Go ran them on separate
-    goroutines). A forced poll inside the cooldown still returns at once. The cooldown runs on a monotonic clock, as Go's.
+  * Polls and operator writes never interleave: scheduled, forced and post-registration polls, Restore Token and Reset
+    Agent all run on one queue (`Poller.exclusive`). Go ran them on separate goroutines, and two interleavings lost an
+    operator's write (a Restore Token undone by a forced poll's expired flag; a Reset Agent overwritten by a
+    re-registration of the old account). A forced poll inside the cooldown still returns at once; one outside it waits
+    for what is in flight, so behind a stuck upstream call it can take up to two 30 s timeouts (Go: one). The cooldown
+    runs on a monotonic clock, as Go's.
   * An operator route reads at most 1 MiB of body; a first JSON value that does not end within it is `400 invalid request
-    body: http: request body too large` (Go read the first value without a bound).
-  * The bearer credential is parsed as clerk-client's `bearerFrom` (owner, auth-service#15): JavaScript's `s`, so U+FEFF
-    separates and U+0085 does not, the other way round from Go's `strings.Fields`. Scopes split on SP, TAB, CR, LF only.
+    body: http: request body too large` (Go read the first value without a bound). Nesting deeper than 10000 is Go's
+    `invalid character '[' exceeded max depth`; the parser is iterative, so no depth reaches the call stack.
+  * The bearer credential is parsed as clerk-client's `bearerFrom` (owner, auth-service#15). Node reads the header as
+    latin1, so a lone byte 0xA0 separates the scheme from the token here and not in Go, while a UTF-8 non-ASCII space
+    (C2 A0, C2 85, ...) separates in Go and not here. ASCII whitespace is the same. Scopes split on SP, TAB, CR, LF only.
   * Log lines about upstream failures name the call and the status (`spacetraders upstream error (503) on GET /`) or the
     error code, never upstream's body or Go's error text. A 502's text is `POST /register: request failed (CODE)`.
-  * `fetch` follows redirects as Go's client does, but up to 20 (Go: 10), dropping `Authorization` on a cross-origin hop.
+  * Redirects are followed by hand, as Go 1.22's client follows them (`spacetraders/client.ts` `follow`): 301/302/303
+    turn a POST into a GET without a body, 307/308 repeat it, the 10th redirect is refused (`stopped after 10
+    redirects`, a 502). Stricter than Go: `Authorization` (the account token) goes only to the origin the call started
+    at, where Go also sends it to another port on the same host or to a subdomain; no Referer is added.
+  * JSON answers are Go's bytes (`http/json.ts` `goMarshal`): `<`, `>`, `&`, U+2028 and U+2029 escaped as Go escapes them.
   * `updated_at` and `occurred_at` are written in UTC (Go: the local zone, UTC in the image). Nothing reads them.
   * A non-ASCII account token is sent as its UTF-8 bytes, as Go sends it; a control character fails the call before it
     is sent, as in Go.

@@ -16,9 +16,9 @@ import { openInMemory } from "../db/database";
 import { createVerifier } from "../jwt/verify";
 import { Poller } from "../poller";
 import { createHttpServer } from "../server";
-import { TransportError, UpstreamError } from "../spacetraders/client";
+import { TransportError, UpstreamError, type RegisterResult, type RootInfo } from "../spacetraders/client";
 import { createTestApp, credential, NOW, TEST_ORIGIN, time } from "../testSupport/createTestApp";
-import { FakeUpstream, rootOf } from "../testSupport/fakeUpstream";
+import { deferred, FakeUpstream, rootOf } from "../testSupport/fakeUpstream";
 import { afterUnauthorized, bearerFrom, MAX_OPERATOR_BODY, splitScopes, vaultSecretOk, type VaultDeps } from "../vault";
 
 jest.setTimeout(30000);
@@ -89,6 +89,11 @@ function world(row: typeof REGISTERED | null = REGISTERED): World {
     introspection: { secret: INTROSPECTION, verifier: createVerifier({ key: createPublicKey(key), issuer: "" }) },
   });
   return { app, db, store, upstream, poller, logs, monotonic };
+}
+
+async function waitFor(condition: () => boolean): Promise<void> {
+  for (let i = 0; i < 200 && !condition(); i++) await new Promise((r) => setTimeout(r, 10));
+  if (!condition()) throw new Error("timed out waiting");
 }
 
 const token = (w: World, secret: string | null = SHARED, query = "") => {
@@ -528,5 +533,82 @@ describe("no credential leaves the vault but through the token route", () => {
       expect(w.logs.filter((l) => l.includes(s))).toEqual([]);
       expect(bodies.filter((b) => b.includes(s))).toEqual([]);
     }
+  });
+});
+
+describe("operator writes and polls do not interleave (stricter than Go, which lost the operator's write)", () => {
+  it("a Restore Token that lands during a forced poll waits for it, and the poll's expired flag does not undo it", async () => {
+    const w = world();
+    const slow = deferred<RootInfo>();
+    w.upstream.root = () => slow.promise;
+    const forced = token(w, SHARED, "?afterUnauthorized=true").then((r) => r);
+    await waitFor(() => w.upstream.rootCalls.length === 1);
+    let restored = false;
+    const restore = request(w.app)
+      .post("/api/auth/v1/agent-token")
+      .set("Authorization", `Bearer ${jwt()}`)
+      .send('{"agentToken":"fresh-from-operator"}')
+      .then((r) => {
+        restored = true;
+        return r;
+      });
+    await new Promise((r) => setTimeout(r, 50));
+    expect(restored).toBe(false);
+    slow.resolve(rootOf("2026-09-01", "2099-01-01T00:00:00Z"));
+    expect((await forced).status).toBe(200);
+    expectJson(await restore, 200, { status: "restored" });
+    expect(getCredential(w.db)).toMatchObject({ agentToken: "fresh-from-operator", tokenExpired: false });
+  });
+
+  it("a Reset Agent with a new account that lands during a re-registration is not overwritten with the old account", async () => {
+    const w = world();
+    w.upstream.root = () => Promise.resolve(rootOf("2026-09-15", "2099-02-01T00:00:00Z"));
+    const slowOld = deferred<RegisterResult>();
+    w.upstream.registration = () => (w.upstream.registerCalls.at(-1)?.accountToken === "account-token-sentinel" ? slowOld.promise : Promise.resolve({ agentToken: "tok-for-new", agentSymbol: "NEWSYM", credits: 0n }));
+    const scheduled = w.poller.tick(false);
+    await waitFor(() => w.upstream.registerCalls.length === 1);
+    const reset = request(w.app)
+      .post("/api/auth/v1/register")
+      .set("Authorization", `Bearer ${jwt()}`)
+      .send(JSON.stringify({ accountToken: "NEW-ACCOUNT", symbol: "NEWSYM", faction: "F" }))
+      .then((r) => r);
+    await new Promise((r) => setTimeout(r, 50));
+    expect(w.upstream.registerCalls).toHaveLength(1);
+    slowOld.resolve({ agentToken: "tok-for-old", agentSymbol: "CONTRACT-1", credits: 0n });
+    await scheduled;
+    expectJson(await reset, 200, { agentSymbol: "NEWSYM", status: "registered" });
+    expect(getCredential(w.db)).toMatchObject({ accountToken: "NEW-ACCOUNT", agentSymbol: "NEWSYM", agentToken: "tok-for-new" });
+  });
+});
+
+describe("JSON answers are Go's bytes", () => {
+  it("escapes <, >, & and U+2028/U+2029 as Go's encoder does, in the token answer", async () => {
+    const w = world();
+    const odd = `<a&b>${String.fromCharCode(0x2028)}x${String.fromCharCode(0x2029)}'"`;
+    expectJson(await request(w.app).post("/api/auth/v1/agent-token").set("Authorization", `Bearer ${jwt()}`).send(JSON.stringify({ agentToken: odd })), 200, { status: "restored" });
+    const res = await token(w);
+    const B = String.fromCharCode(0x5c);
+    expect(res.text).toBe(`{"agentToken":"${B}u003ca${B}u0026b${B}u003e${B}u2028x${B}u2029'${B}""}\n`);
+    expect(JSON.parse(res.text)).toEqual({ agentToken: odd });
+  });
+
+  it("escapes them in the status answer and the register answer too", async () => {
+    const w = world(credential({ agentSymbol: "<S&>" }));
+    expect((await request(w.app).get("/auth/v1/status")).text).toBe('{"state":"HEALTHY","agentSymbol":"\\u003cS\\u0026\\u003e"}\n');
+    w.upstream.registration = () => Promise.resolve({ agentToken: "t", agentSymbol: "<R>", credits: 0n });
+    const res = await request(w.app).post("/api/auth/v1/register").set("Authorization", `Bearer ${jwt()}`).send(JSON.stringify({ accountToken: "a", symbol: "s", faction: "f" }));
+    expect(res.text).toBe('{"agentSymbol":"\\u003cR\\u003e","status":"registered"}\n');
+  });
+});
+
+describe("a body nested deeper than Go reads", () => {
+  it("is 400 with Go's error, not a 500 and a stack, at any depth", async () => {
+    const w = world();
+    const post = (body: string) => request(w.app).post("/api/auth/v1/agent-token").set("Authorization", `Bearer ${jwt()}`).send(body);
+    expectJson(await post(`{"x":${"[".repeat(9999)}${"]".repeat(9999)},"agentToken":"deep"}`), 200, { status: "restored" });
+    for (const depth of [10001, 20000, 500_000]) {
+      expectText(await post("[".repeat(depth)), 400, "invalid request body: invalid character '[' exceeded max depth\n");
+    }
+    expect(w.logs.filter((l) => /RangeError|at /.test(l))).toEqual([]);
   });
 });

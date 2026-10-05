@@ -33,6 +33,19 @@ export class UpstreamError extends Error {
   }
 }
 
+/** How many redirects Go's default CheckRedirect follows: the 10th redirect is refused ("stopped after 10 redirects"). */
+export const MAX_REDIRECTS = 10;
+
+/** A redirect Go's client would refuse to follow. Its message names no URL. */
+class RedirectError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = "RedirectError";
+  }
+}
+
+const REDIRECT_STATUSES = new Set([301, 302, 303, 307, 308]);
+
 /** The call never got an answer: no connection, a reset, the timeout, or shutdown. */
 export class TransportError extends Error {
   constructor(what: string, cause: unknown) {
@@ -43,6 +56,7 @@ export class TransportError extends Error {
 
 /** The reason a fetch failed, from its cause's code: never a URL, a header or a body. */
 function transportReason(err: unknown): string {
+  if (err instanceof RedirectError) return err.message;
   // By name, not instanceof: fetch's AbortError is a DOMException, of another realm under a test runner.
   const name = (err as { name?: unknown } | null)?.name;
   if (name === "AbortError" || name === "TimeoutError") return "request abandoned (timeout or shutdown)";
@@ -99,8 +113,53 @@ export function spaceTradersClient(options: ClientOptions): SpaceTradersClient {
   const timeoutMs = options.timeoutMs ?? UPSTREAM_TIMEOUT_MS;
   const doFetch = options.fetch ?? fetch;
 
-  /** One exchange, body read to the end, inside the timeout. */
-  async function exchange(what: string, path: string, init: RequestInit, signal: AbortSignal | undefined): Promise<{ status: number; body: Buffer }> {
+  /**
+   * The request, following redirects as Go 1.22's http.Client does: 301, 302 and 303 turn any method but GET and HEAD
+   * into a GET without a body, 307 and 308 repeat the method and the body; a 307 or 308 without a Location is the
+   * answer, a 301, 302 or 303 without one is an error; only http and https are followed; the 10th redirect is refused.
+   * `Authorization` (the account token) is sent only to the origin the call started at: Go also sends it to another
+   * port on the same host and to a subdomain, which this does not (stricter). No Referer is added.
+   */
+  async function follow(start: string, init: { method: string; headers: Record<string, string>; body?: string }, signal: AbortSignal): Promise<Response> {
+    let url = new URL(start);
+    const origin = url.origin;
+    let method = init.method;
+    let body = init.body;
+    for (let redirects = 0; ; redirects++) {
+      const headers = { ...init.headers };
+      if (url.origin !== origin) delete headers.Authorization;
+      if (body === undefined) delete headers["Content-Type"];
+      const res = await doFetch(url.href, { method, headers, ...(body === undefined ? {} : { body }), redirect: "manual", signal });
+      if (!REDIRECT_STATUSES.has(res.status)) return res;
+      const location = res.headers.get("location") ?? "";
+      if (location === "" && (res.status === 307 || res.status === 308)) return res;
+      await res.body?.cancel();
+      if (location === "") throw new RedirectError(`${String(res.status)} response missing Location header`);
+      if (redirects + 1 >= MAX_REDIRECTS) throw new RedirectError(`stopped after ${String(MAX_REDIRECTS)} redirects`);
+      let next: URL;
+      try {
+        next = new URL(location, url);
+      } catch {
+        throw new RedirectError("failed to parse Location header");
+      }
+      if (next.protocol !== "http:" && next.protocol !== "https:") throw new RedirectError("unsupported protocol scheme in a redirect");
+      if (res.status <= 303 && method !== "GET" && method !== "HEAD") {
+        method = "GET";
+        body = undefined;
+      } else if (res.status <= 303) {
+        body = undefined;
+      }
+      url = next;
+    }
+  }
+
+  /** One exchange, redirects followed, body read to the end, all inside the timeout. */
+  async function exchange(
+    what: string,
+    path: string,
+    init: { method: string; headers: Record<string, string>; body?: string },
+    signal: AbortSignal | undefined,
+  ): Promise<{ status: number; body: Buffer }> {
     const timeout = new AbortController();
     const timer = setTimeout(() => {
       timeout.abort();
@@ -111,7 +170,7 @@ export function spaceTradersClient(options: ClientOptions): SpaceTradersClient {
     signal?.addEventListener("abort", onAbort, { once: true });
     if (signal?.aborted === true) timeout.abort();
     try {
-      const res = await doFetch(options.baseUrl + path, { ...init, signal: timeout.signal });
+      const res = await follow(options.baseUrl + path, init, timeout.signal);
       const body = Buffer.from(await res.arrayBuffer());
       return { status: res.status, body };
     } catch (err) {
@@ -125,7 +184,7 @@ export function spaceTradersClient(options: ClientOptions): SpaceTradersClient {
   return {
     async getRoot(signal) {
       const what = "GET /";
-      const { status, body } = await exchange(what, "/", { method: "GET" }, signal);
+      const { status, body } = await exchange(what, "/", { method: "GET", headers: {} }, signal);
       if (status >= 400) throw new UpstreamError(status, what, body);
       const raw = unmarshal(body, ROOT_SHAPE, "spacetraders.rawRootResponse");
       return { resetDate: parseFlexibleTime(raw.resetDate), nextReset: parseFlexibleTime(raw.serverResets.next), frequency: raw.serverResets.frequency };
