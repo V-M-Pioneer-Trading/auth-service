@@ -105,19 +105,11 @@ describe("GET /auth/v1/status and /api/auth/v1/status", () => {
 });
 
 describe("routes not ported yet are not registered", () => {
-  it.each([
-    ["GET", "/auth/v1/token"],
-    ["POST", "/auth/v1/m2m-token"],
-  ])("%s %s is the router's bare 405, as it is for a wrong method", async (method, path) => {
+  it.each([["POST", "/auth/v1/m2m-token"]])("%s %s is the router's bare 405, as it is for a wrong method", async (method, path) => {
     const app = createTestApp(credential());
     const res = await (method === "GET" ? request(app).get(path) : request(app).post(path));
     expect(res.status).toBe(405);
     expect(res.text).toBe("");
-  });
-
-  it.each(["/api/auth/v1/agent-token", "/api/auth/v1/register"])("POST %s is a 404 until it is registered", async (path) => {
-    const res = await request(createTestApp(credential())).post(path);
-    expect(res.status).toBe(404);
   });
 });
 

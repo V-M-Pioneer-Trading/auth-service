@@ -18,21 +18,29 @@ export const goJson: RequestHandler = (_req: Request, res: Response, next: NextF
 
 /**
  * An answer that is a status and a sentence, `http.Error`: thrown from a handler and written by the app's error
- * handler (a 500 from the database).
+ * handler (a 500 from the database). `bytes`, when given, is the sentence as raw bytes (upstream's text passed through
+ * to the operator), written in place of `message`.
  */
 export class TextAnswer extends Error {
   readonly status: number;
-  constructor(status: number, message: string) {
+  readonly bytes: Buffer | undefined;
+  constructor(status: number, message: string, bytes?: Buffer) {
     super(message);
     this.name = "TextAnswer";
     this.status = status;
+    this.bytes = bytes;
+  }
+
+  /** What is written before the newline. */
+  get body(): string | Buffer {
+    return this.bytes ?? this.message;
   }
 }
 
 /** net/http's http.Error: text/plain, the message and one newline. */
-export function sendText(res: Response, status: number, message: string): void {
+export function sendText(res: Response, status: number, message: string | Buffer): void {
   res.statusCode = status;
   res.setHeader("Content-Type", "text/plain; charset=utf-8");
   res.setHeader("X-Content-Type-Options", "nosniff");
-  res.end(`${message}\n`);
+  res.end(typeof message === "string" ? `${message}\n` : Buffer.concat([message, Buffer.from("\n")]));
 }

@@ -41,3 +41,16 @@ introspection.json
   Do not edit it here. introspectionFixture.test.ts asserts this hash, so the copy pins itself; .gitattributes keeps the
   file -text so a Windows checkout holds the same LF bytes.
   sha256 90562110d24e47bfdcbf7ff05f1112b4bc840835bf728fa7f6bd81ff67bbeb9c
+
+go-vault-verdicts.json
+  What the Go service's vault decodes, recorded by go-vault-recorder.go.txt (Go 1.22.4, standard library only; the
+  request types of src/api/routes.go and the upstream types and parseFlexibleTime of src/spacetraders/client.go in it
+  verbatim), on the corpus go-vault-recorder-input.mjs.txt writes:
+  bodies         each body (hex) decoded four ways: json.NewDecoder(...).Decode into restoreTokenRequest and into
+                 registerRequest (the operator routes), json.Unmarshal into rawRootResponse and rawRegisterResponse (what
+                 SpaceTraders answers); "error", or every field as name=hex of its UTF-8 bytes
+  flexibleTimes  parseFlexibleTime of each input (hex): "zero", or Format(RFC3339), Unix() and Nanosecond()
+  vaultParity.test.ts holds src/goJson.ts and parseFlexibleTime to them. To re-record (Go and Node on the PATH), in a
+  scratch directory:
+    cp <this dir>/go-vault-recorder.go.txt main.go && cp <this dir>/go-vault-recorder-input.mjs.txt input.mjs
+    go mod init recorder && node input.mjs > input.json && go run . input.json > go-vault-verdicts.json

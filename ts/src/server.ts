@@ -3,7 +3,7 @@ import type { DatabaseSync } from "node:sqlite";
 import express, { type ErrorRequestHandler, type Request, type RequestHandler } from "express";
 
 import { ConfigError, loadConfig, type Config } from "./config";
-import { CLOCK_LOCAL, CREDENTIALS_LOCAL, INTROSPECTION_LOCAL } from "./controllers/support";
+import { CLOCK_LOCAL, CREDENTIALS_LOCAL, INTROSPECTION_LOCAL, VAULT_LOCAL } from "./controllers/support";
 import { sqliteCredentialStore, type CredentialStore } from "./db/credential";
 import { openDatabase } from "./db/database";
 import { RegisterRoutes } from "./generated/routes";
@@ -15,6 +15,7 @@ import { createVerifier } from "./jwt/verify";
 import { decodedPathOf, muxCompat, noHead, terminalAnswer } from "./http/muxCompat";
 import { stderrLog, visible, type Logger } from "./log";
 import { nodeTooOld } from "./runtime";
+import { CLOSED_VAULT, startVault, type VaultDeps } from "./vault";
 
 /**
  * How much of an unread request body is read, after the answer, to keep the connection (Go's maxPostHandlerReadBytes);
@@ -98,6 +99,8 @@ export interface AppDeps {
   readonly now?: () => number;
   /** One line per request, like the Go logging middleware; off unless given. */
   readonly log?: Logger;
+  /** The vault (step 7c): GET /auth/v1/token and the operator routes. Without it every caller is refused. */
+  readonly vault?: VaultDeps;
 }
 
 /**
@@ -121,6 +124,7 @@ export function createApp(deps: AppDeps): express.Express {
   app.locals[CREDENTIALS_LOCAL] = deps.credentials;
   app.locals[CLOCK_LOCAL] = deps.now ?? Date.now;
   app.locals[INTROSPECTION_LOCAL] = deps.introspection ?? { secret: "", verifier: () => Promise.resolve(null) };
+  app.locals[VAULT_LOCAL] = deps.vault ?? CLOSED_VAULT;
   app.disable("x-powered-by");
   app.set("etag", false);
   // mux is case sensitive and tolerates no trailing slash.
@@ -152,7 +156,7 @@ export function createApp(deps: AppDeps): express.Express {
       return;
     }
     if (err instanceof TextAnswer) {
-      sendText(res, err.status, err.message);
+      sendText(res, err.status, err.body);
       return;
     }
     console.error(err);
@@ -179,11 +183,14 @@ export function main(env: NodeJS.ProcessEnv = process.env): void {
     process.exit(1);
   }
 
+  // The vault's poller starts before the listener, as Go's `go p.Run(ctx)` does.
+  const vault = startVault(db, { sharedSecret: config.sharedSecret, gatewayProxyUrl: config.gatewayProxyUrl, log: stderrLog });
   const app = createApp({
     corsAllowedOrigin: config.corsAllowedOrigin,
     credentials: sqliteCredentialStore(db),
     introspection: { secret: config.introspectionSecret, verifier: createVerifier({ key: config.clerkJwtKey, issuer: config.clerkIssuer }) },
     log: stderrLog,
+    vault: vault.deps,
   });
   const server = createHttpServer(app);
   server.listen(config.port, () => {
@@ -196,9 +203,13 @@ export function main(env: NodeJS.ProcessEnv = process.env): void {
 
   const shutdown = (signal: string): void => {
     stderrLog(`received ${signal}, shutting down`);
+    // The poller first: its wait ends and an upstream call in flight is abandoned, so no request waits on one.
+    const vaultStopped = vault.stop();
     server.close(() => {
-      db.close();
-      process.exit(0);
+      void vaultStopped.then(() => {
+        db.close();
+        process.exit(0);
+      });
     });
     server.closeIdleConnections();
     setTimeout(() => process.exit(1), 10_000).unref();

@@ -1,8 +1,8 @@
 # Contract cases the TypeScript service does not pass yet: every case of a route that is not ported.
 # Step 7a ported the health and status routes, CORS, the router table and the startup refusals; 7b ported
-# POST /auth/v1/introspect (every introspection case, the fixture included, is off this list). What is listed below
-# arrives with 7c (the vault: GET /auth/v1/token, register, restore, the poller, the Clerk session gate) and 7d
-# (machine tokens). The list shrinks with each of those PRs and is empty after 7d. A case of a describe that is
+# POST /auth/v1/introspect (every introspection case, the fixture included, is off this list); 7c ported the vault
+# (GET /auth/v1/token, register, restore, the poller, the Clerk session gate: every case of those is off this list).
+# What is listed below arrives with 7d (machine tokens), after which the list is empty. A case of a describe that is
 # partly ported is listed by its full name.
 #
 # One JavaScript regular expression per line, handed to the judge in scripts/run-contract.cjs, matched like
@@ -24,38 +24,8 @@
 ^the secret gate$
 ^which callers are enabled$
 ^tokens only introspect when the dev key is the verification key$
-^the forced poll: GET /auth/v1/token\?afterUnauthorized=true$
-^wipe detection through the forced poll$
-^the 10 s cooldown on forced polls$
-^what survives a restart on the same /data volume$
-^what it asks of the caller$
-^what it sends to SpaceTraders$
-^what it stores and answers$
-^how upstream failures map to responses$
 ^OPTIONS and CORS carries CORS on handler responses of every status, and on none of the router's own 404/405/301$
 ^the M2M mint table is validated at startup has nothing to collide with when there is no introspection secret$
-^settings that leave the service running in a fail-closed state without AUTH_INTROSPECTION_SECRET the route is mounted and rejects every caller, empty header included$
 ^settings that leave the service running in a fail-closed state with no M2M callers configured the mint route rejects everyone and the rest works$
 ^accepted spellings of keys DEV_M2M_SIGNING_KEY_FILE as PKCS#8 or PKCS#1 private key$
 ^log hygiene, production mode$
-^GET /auth/v1/token rejects a wrong or missing shared secret with 403, the envelope and no-store$
-^GET /auth/v1/token does not accept the introspection secret, a caller secret, or a Clerk session in place of the shared secret$
-^GET /auth/v1/token ignores a secret passed in the query string$
-^GET /auth/v1/token is 503 with a plain-text body while no credential is configured$
-^GET /auth/v1/token ignores surrounding whitespace in the secret header value$
-^GET /auth/v1/token returns the agent token, and only that, once registered; Cache-Control is absent today and no-store would also be accepted$
-^GET /auth/v1/token is 503 again if the stored agent token is empty$
-^GET /auth/v1/status and /api/auth/v1/status reports HEALTHY with the symbol and RFC 3339 dates once registered, and never a token$
-^GET /auth/v1/status and /api/auth/v1/status is WIPE_IMMINENT inside the 24 h before the predicted reset, and HEALTHY outside it$
-^GET /auth/v1/status and /api/auth/v1/status stays WIPE_IMMINENT after the predicted reset has passed$
-^GET /auth/v1/status and /api/auth/v1/status formats dates the way Go's RFC 3339 does: offsets kept, fractions dropped, date-only read as midnight UTC$
-^GET /auth/v1/status and /api/auth/v1/status omits a date it cannot parse instead of failing$
-^GET /auth/v1/status and /api/auth/v1/status omits both dates when the root carries neither$
-^the session gate on the operator routes 401 'a bearer token is required' when there is no usable bearer credential$
-^the session gate on the operator routes 401 'invalid or expired session' for anything that does not verify, naming no reason$
-^the session gate on the operator routes 403 'requires a scope this session does not carry' for a valid session without agent:reset$
-^the session gate on the operator routes does not take the token from the query string$
-^the session gate on the operator routes decides on the first of two Authorization headers$
-^the session gate on the operator routes splits the scope on runs of space, tab, CR and LF and on nothing else \(fixture v6\)$
-^the session gate on the operator routes authenticates before it reads the body$
-^POST /api/auth/v1/agent-token \(Restore Token\)$

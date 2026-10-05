@@ -7,9 +7,11 @@ say "like Go": read them as "as the contract suite and the Go source pin it".
 
 Step 7a (the scaffold) ported: health, status, CORS, the router's 404/405/301 table, every startup refusal, SQLite.
 Step 7b ported Clerk JWT verification (`src/jwt/verify.ts`, `jose`) and `POST /auth/v1/introspect`
-(`src/introspection.ts`, `controllers/introspect.controller.ts`). Not ported, and deliberately unregistered so the
-contract skip list covers them: the vault, register, restore and the poller (7c), machine tokens (7d). The vault's
-operator routes must call the same `createVerifier` function in-process (decision 21: one verification code path).
+(`src/introspection.ts`, `controllers/introspect.controller.ts`). Step 7c ported the vault: `GET /auth/v1/token`, Restore
+Token and Reset Agent (`src/vault.ts`, `controllers/vault.controller.ts`, `operator.controller.ts`), the poller
+(`src/poller.ts`), the SpaceTraders client (`src/spacetraders/client.ts`) and the row's writes (`src/db/credential.ts`).
+The operator routes call the introspection verifier in-process (decision 21: one verification code path). Not ported,
+and deliberately unregistered so the contract skip list covers them: machine tokens (7d).
 
 ## Commands (from `ts/`)
 
@@ -69,12 +71,20 @@ root like the Go image: `/data/auth.db` is root-owned.
 | gorilla/mux and net/http artefacts | `src/http/muxCompat.ts`, `cors.ts`, `json.ts` | `app.test.ts`; contract `routing.test.ts` |
 | server hardening (unread bodies, timeouts, parse errors) | `src/server.ts` | `connections.test.ts` |
 | SQLite, same DDL | `src/db/` | `db.test.ts` against a file the Go image's `db` package wrote |
+| the vault's writes, same statements, Go's `formatTime` | `src/db/credential.ts` | `vaultStore.test.ts`, writes onto the Go-written file; a TS-written file served by the Go image (PR #15's evidence) |
+| `encoding/json` as the vault uses it: `Decoder.Decode` (first value) for the operator bodies, `Unmarshal` for SpaceTraders' answers, key folding, `int` | `src/goJson.ts` | `vaultParity.test.ts` against 160 bodies Go decoded four ways (`go-vault-recorder.go.txt`) |
+| `parseFlexibleTime` (RFC 3339, else a bare date), `Time.Equal` to the nanosecond | `src/spacetraders/client.ts`, `src/goTime.ts` | `vaultParity.test.ts`, 40 dates |
+| the poller: cadence, forced polls and their 10 s cooldown, wipe detection, re-registration, APP_TOKEN_EXPIRED | `src/poller.ts`, `src/state/machine.ts` | `poller.test.ts` on a fake clock with a stubbed st-gateway; contract `poller.test.ts` |
+| the token route, the session gate, Restore Token, Reset Agent | `src/vault.ts` | `vault.test.ts`; contract `vault.test.ts`, `register.test.ts` |
 
 Never `url.Parse` through WHATWG `URL`, never `trim()` for Go's TrimSpace, never `createPublicKey(pem)` directly: each
 answers differently from Go on inputs the contract pins. Never `URLSearchParams` or `express.urlencoded` for the
 introspection form (no `;` error, no sticky escape error), never `req.headers[...]` for the introspection secret (Node
 joins repeats), and never `jwtVerify` without `verify.ts`'s Go checks around it (it reads padding, whitespace, a BOM and
-1e400 that golang-jwt refuses, and judges a fractional `exp` up to a second longer).
+1e400 that golang-jwt refuses, and judges a fractional `exp` up to a second longer). Never `JSON.parse` for an operator
+route's body or a SpaceTraders answer (`src/goJson.ts`: Go ignores what follows the first value of a body, folds key
+case, keeps the last duplicate, and refuses `1.0` for an int), and never log an `UpstreamError`'s body or an error's
+text other than through `describeError` (upstream's body can hold anything).
 
 ## Deliberate differences from Go
 
@@ -90,12 +100,28 @@ joins repeats), and never `jwtVerify` without `verify.ts`'s Go checks around it 
 * PEM keys follow golang-jwt exactly, including: bytes after the DER structure are refused for a public key and for a
   PKCS#1 private key but accepted for a PKCS#8 private key; the END line must start a line and the first END decides.
 * Accepted by the owner (decision 23): `Cache-Control: no-store` may be added to `GET /auth/v1/token`; a JWT with an unknown
-  `crit` header is rejected; `GET /auth/v1/token`'s secret compares in constant time.
+  `crit` header is rejected; `GET /auth/v1/token`'s secret compares in constant time. The constant-time compare is
+  done (SHA-256 of each side, `timingSafeEqual`; still 403). `no-store` on the token answer is NOT added: 15 cases of
+  the contract suite pin its absence (only one accepts either), and contract/ is not edited by a port.
 * Token verification is stricter than Go's, never looser (each case pinned against Go's recorded answer): any `crit` but
   `["b64"]` with `b64: true` (decision 23); an RSA key under 2048 bits makes every token inactive (jose's floor for RS256,
   Go has none; no startup refusal is added in the port, a follow-up after cutover); a present `iat` that is not a number;
   claims that are not valid UTF-8 (Go substitutes U+FFFD); a fractional `nbf` inside the last second of the leeway; an
   `nbf` so large that Go's int64 conversion wraps it into the past. None is producible by Clerk.
+
+* The vault (7c):
+  * Polls never overlap: scheduled, forced and post-registration polls run on one queue (Go ran them on separate
+    goroutines). A forced poll inside the cooldown still returns at once. The cooldown runs on a monotonic clock, as Go's.
+  * An operator route reads at most 1 MiB of body; a first JSON value that does not end within it is `400 invalid request
+    body: http: request body too large` (Go read the first value without a bound).
+  * The bearer credential is parsed as clerk-client's `bearerFrom` (owner, auth-service#15): JavaScript's `s`, so U+FEFF
+    separates and U+0085 does not, the other way round from Go's `strings.Fields`. Scopes split on SP, TAB, CR, LF only.
+  * Log lines about upstream failures name the call and the status (`spacetraders upstream error (503) on GET /`) or the
+    error code, never upstream's body or Go's error text. A 502's text is `POST /register: request failed (CODE)`.
+  * `fetch` follows redirects as Go's client does, but up to 20 (Go: 10), dropping `Authorization` on a cross-origin hop.
+  * `updated_at` and `occurred_at` are written in UTC (Go: the local zone, UTC in the image). Nothing reads them.
+  * A non-ASCII account token is sent as its UTF-8 bytes, as Go sends it; a control character fails the call before it
+    is sent, as in Go.
 
 ## Invariants
 

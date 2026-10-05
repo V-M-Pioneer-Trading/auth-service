@@ -5,6 +5,7 @@ import type { Request } from "express";
 
 import type { CredentialStore } from "../db/credential";
 import type { IntrospectionDeps } from "../introspection";
+import type { VaultDeps } from "../vault";
 
 export const CREDENTIALS_LOCAL = "credentials";
 export const CLOCK_LOCAL = "clock";
@@ -21,4 +22,11 @@ export function introspectionOf(req: Request): IntrospectionDeps {
 /** Milliseconds since the epoch; replaced in tests. */
 export function nowOf(req: Request): number {
   return (req.app.locals[CLOCK_LOCAL] as () => number)();
+}
+
+// The vault (step 7c).
+export const VAULT_LOCAL = "vault";
+
+export function vaultOf(req: Request): VaultDeps {
+  return req.app.locals[VAULT_LOCAL] as VaultDeps;
 }

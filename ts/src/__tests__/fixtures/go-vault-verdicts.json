@@ -1,0 +1,1607 @@
+{
+ "bodies": [
+  [
+   "",
+   {
+    "restore": "error",
+    "register": "error",
+    "root": "error",
+    "registerResponse": "error"
+   }
+  ],
+  [
+   "20",
+   {
+    "restore": "error",
+    "register": "error",
+    "root": "error",
+    "registerResponse": "error"
+   }
+  ],
+  [
+   "090d0a",
+   {
+    "restore": "error",
+    "register": "error",
+    "root": "error",
+    "registerResponse": "error"
+   }
+  ],
+  [
+   "7b",
+   {
+    "restore": "error",
+    "register": "error",
+    "root": "error",
+    "registerResponse": "error"
+   }
+  ],
+  [
+   "7d",
+   {
+    "restore": "error",
+    "register": "error",
+    "root": "error",
+    "registerResponse": "error"
+   }
+  ],
+  [
+   "5b5d",
+   {
+    "restore": "error",
+    "register": "error",
+    "root": "error",
+    "registerResponse": "error"
+   }
+  ],
+  [
+   "5b",
+   {
+    "restore": "error",
+    "register": "error",
+    "root": "error",
+    "registerResponse": "error"
+   }
+  ],
+  [
+   "6e756c6c",
+   {
+    "restore": "agentToken=",
+    "register": "accountToken= symbol= faction= email=",
+    "root": "resetDate= next= frequency=",
+    "registerResponse": "token= symbol= credits=30"
+   }
+  ],
+  [
+   "206e756c6c20",
+   {
+    "restore": "agentToken=",
+    "register": "accountToken= symbol= faction= email=",
+    "root": "resetDate= next= frequency=",
+    "registerResponse": "token= symbol= credits=30"
+   }
+  ],
+  [
+   "6e756c6c73",
+   {
+    "restore": "agentToken=",
+    "register": "accountToken= symbol= faction= email=",
+    "root": "error",
+    "registerResponse": "error"
+   }
+  ],
+  [
+   "6e756c",
+   {
+    "restore": "error",
+    "register": "error",
+    "root": "error",
+    "registerResponse": "error"
+   }
+  ],
+  [
+   "6e756c78",
+   {
+    "restore": "error",
+    "register": "error",
+    "root": "error",
+    "registerResponse": "error"
+   }
+  ],
+  [
+   "74727565",
+   {
+    "restore": "error",
+    "register": "error",
+    "root": "error",
+    "registerResponse": "error"
+   }
+  ],
+  [
+   "7472756578",
+   {
+    "restore": "error",
+    "register": "error",
+    "root": "error",
+    "registerResponse": "error"
+   }
+  ],
+  [
+   "66616c7365",
+   {
+    "restore": "error",
+    "register": "error",
+    "root": "error",
+    "registerResponse": "error"
+   }
+  ],
+  [
+   "3432",
+   {
+    "restore": "error",
+    "register": "error",
+    "root": "error",
+    "registerResponse": "error"
+   }
+  ],
+  [
+   "343278",
+   {
+    "restore": "error",
+    "register": "error",
+    "root": "error",
+    "registerResponse": "error"
+   }
+  ],
+  [
+   "2d",
+   {
+    "restore": "error",
+    "register": "error",
+    "root": "error",
+    "registerResponse": "error"
+   }
+  ],
+  [
+   "2d30",
+   {
+    "restore": "error",
+    "register": "error",
+    "root": "error",
+    "registerResponse": "error"
+   }
+  ],
+  [
+   "30313233",
+   {
+    "restore": "error",
+    "register": "error",
+    "root": "error",
+    "registerResponse": "error"
+   }
+  ],
+  [
+   "312e",
+   {
+    "restore": "error",
+    "register": "error",
+    "root": "error",
+    "registerResponse": "error"
+   }
+  ],
+  [
+   "2e35",
+   {
+    "restore": "error",
+    "register": "error",
+    "root": "error",
+    "registerResponse": "error"
+   }
+  ],
+  [
+   "2273747222",
+   {
+    "restore": "error",
+    "register": "error",
+    "root": "error",
+    "registerResponse": "error"
+   }
+  ],
+  [
+   "22612278",
+   {
+    "restore": "error",
+    "register": "error",
+    "root": "error",
+    "registerResponse": "error"
+   }
+  ],
+  [
+   "7b7d",
+   {
+    "restore": "agentToken=",
+    "register": "accountToken= symbol= faction= email=",
+    "root": "resetDate= next= frequency=",
+    "registerResponse": "token= symbol= credits=30"
+   }
+  ],
+  [
+   "7b7d20747261696c696e67",
+   {
+    "restore": "agentToken=",
+    "register": "accountToken= symbol= faction= email=",
+    "root": "error",
+    "registerResponse": "error"
+   }
+  ],
+  [
+   "7b7d7b",
+   {
+    "restore": "agentToken=",
+    "register": "accountToken= symbol= faction= email=",
+    "root": "error",
+    "registerResponse": "error"
+   }
+  ],
+  [
+   "7b7d7d",
+   {
+    "restore": "agentToken=",
+    "register": "accountToken= symbol= faction= email=",
+    "root": "error",
+    "registerResponse": "error"
+   }
+  ],
+  [
+   "7b7d2c",
+   {
+    "restore": "agentToken=",
+    "register": "accountToken= symbol= faction= email=",
+    "root": "error",
+    "registerResponse": "error"
+   }
+  ],
+  [
+   "20090a0d7b7d",
+   {
+    "restore": "agentToken=",
+    "register": "accountToken= symbol= faction= email=",
+    "root": "resetDate= next= frequency=",
+    "registerResponse": "token= symbol= credits=30"
+   }
+  ],
+  [
+   "0c7b7d",
+   {
+    "restore": "error",
+    "register": "error",
+    "root": "error",
+    "registerResponse": "error"
+   }
+  ],
+  [
+   "0b7b7d",
+   {
+    "restore": "error",
+    "register": "error",
+    "root": "error",
+    "registerResponse": "error"
+   }
+  ],
+  [
+   "c2a07b7d",
+   {
+    "restore": "error",
+    "register": "error",
+    "root": "error",
+    "registerResponse": "error"
+   }
+  ],
+  [
+   "efbbbf7b7d",
+   {
+    "restore": "error",
+    "register": "error",
+    "root": "error",
+    "registerResponse": "error"
+   }
+  ],
+  [
+   "7b226167656e74546f6b656e223a2278227d",
+   {
+    "restore": "agentToken=78",
+    "register": "accountToken= symbol= faction= email=",
+    "root": "resetDate= next= frequency=",
+    "registerResponse": "token= symbol= credits=30"
+   }
+  ],
+  [
+   "7b226167656e74546f6b656e223a2278227d20747261696c696e67",
+   {
+    "restore": "agentToken=78",
+    "register": "accountToken= symbol= faction= email=",
+    "root": "error",
+    "registerResponse": "error"
+   }
+  ],
+  [
+   "7b226167656e74546f6b656e223a2278227d676172626167657b",
+   {
+    "restore": "agentToken=78",
+    "register": "accountToken= symbol= faction= email=",
+    "root": "error",
+    "registerResponse": "error"
+   }
+  ],
+  [
+   "7b226167656e74546f6b656e223a2278227d0a7b226167656e74546f6b656e223a2279227d",
+   {
+    "restore": "agentToken=78",
+    "register": "accountToken= symbol= faction= email=",
+    "root": "error",
+    "registerResponse": "error"
+   }
+  ],
+  [
+   "7b224147454e54544f4b454e223a227570706572227d",
+   {
+    "restore": "agentToken=7570706572",
+    "register": "accountToken= symbol= faction= email=",
+    "root": "resetDate= next= frequency=",
+    "registerResponse": "token= symbol= credits=30"
+   }
+  ],
+  [
+   "7b226167656e74746f6b656e223a226c6f776572227d",
+   {
+    "restore": "agentToken=6c6f776572",
+    "register": "accountToken= symbol= faction= email=",
+    "root": "resetDate= next= frequency=",
+    "registerResponse": "token= symbol= credits=30"
+   }
+  ],
+  [
+   "7b224167656e74546f6b656e223a2263616d656c227d",
+   {
+    "restore": "agentToken=63616d656c",
+    "register": "accountToken= symbol= faction= email=",
+    "root": "resetDate= next= frequency=",
+    "registerResponse": "token= symbol= credits=30"
+   }
+  ],
+  [
+   "7b226167656e74546fe284aa656e223a226b656c76696e227d",
+   {
+    "restore": "agentToken=6b656c76696e",
+    "register": "accountToken= symbol= faction= email=",
+    "root": "resetDate= next= frequency=",
+    "registerResponse": "token= symbol= credits=30"
+   }
+  ],
+  [
+   "7b226167656e74746fe284aa656e223a226b656c76696e32227d",
+   {
+    "restore": "agentToken=6b656c76696e32",
+    "register": "accountToken= symbol= faction= email=",
+    "root": "resetDate= next= frequency=",
+    "registerResponse": "token= symbol= credits=30"
+   }
+  ],
+  [
+   "7b226167656e74546f6b656e223a226669727374222c226167656e74546f6b656e223a227365636f6e64227d",
+   {
+    "restore": "agentToken=7365636f6e64",
+    "register": "accountToken= symbol= faction= email=",
+    "root": "resetDate= next= frequency=",
+    "registerResponse": "token= symbol= credits=30"
+   }
+  ],
+  [
+   "7b226167656e74546f6b656e223a2261222c224147454e54544f4b454e223a2262227d",
+   {
+    "restore": "agentToken=62",
+    "register": "accountToken= symbol= faction= email=",
+    "root": "resetDate= next= frequency=",
+    "registerResponse": "token= symbol= credits=30"
+   }
+  ],
+  [
+   "7b224147454e54544f4b454e223a2262222c226167656e74546f6b656e223a2261227d",
+   {
+    "restore": "agentToken=61",
+    "register": "accountToken= symbol= faction= email=",
+    "root": "resetDate= next= frequency=",
+    "registerResponse": "token= symbol= credits=30"
+   }
+  ],
+  [
+   "7b226167656e74546f6b656e223a357d",
+   {
+    "restore": "error",
+    "register": "accountToken= symbol= faction= email=",
+    "root": "resetDate= next= frequency=",
+    "registerResponse": "token= symbol= credits=30"
+   }
+  ],
+  [
+   "7b226167656e74546f6b656e223a6e756c6c7d",
+   {
+    "restore": "agentToken=",
+    "register": "accountToken= symbol= faction= email=",
+    "root": "resetDate= next= frequency=",
+    "registerResponse": "token= symbol= credits=30"
+   }
+  ],
+  [
+   "7b226167656e74546f6b656e223a2261222c226167656e74546f6b656e223a6e756c6c7d",
+   {
+    "restore": "agentToken=61",
+    "register": "accountToken= symbol= faction= email=",
+    "root": "resetDate= next= frequency=",
+    "registerResponse": "token= symbol= credits=30"
+   }
+  ],
+  [
+   "7b226167656e74546f6b656e223a747275657d",
+   {
+    "restore": "error",
+    "register": "accountToken= symbol= faction= email=",
+    "root": "resetDate= next= frequency=",
+    "registerResponse": "token= symbol= credits=30"
+   }
+  ],
+  [
+   "7b226167656e74546f6b656e223a7b2261223a317d7d",
+   {
+    "restore": "error",
+    "register": "accountToken= symbol= faction= email=",
+    "root": "resetDate= next= frequency=",
+    "registerResponse": "token= symbol= credits=30"
+   }
+  ],
+  [
+   "7b226167656e74546f6b656e223a5b2278225d7d",
+   {
+    "restore": "error",
+    "register": "accountToken= symbol= faction= email=",
+    "root": "resetDate= next= frequency=",
+    "registerResponse": "token= symbol= credits=30"
+   }
+  ],
+  [
+   "7b226167656e74546f6b656e223a352c226167656e74546f6b656e223a226c61746572227d",
+   {
+    "restore": "error",
+    "register": "accountToken= symbol= faction= email=",
+    "root": "resetDate= next= frequency=",
+    "registerResponse": "token= symbol= credits=30"
+   }
+  ],
+  [
+   "7b226167656e74546f6b656e223a2278222c7d",
+   {
+    "restore": "error",
+    "register": "error",
+    "root": "error",
+    "registerResponse": "error"
+   }
+  ],
+  [
+   "7b226167656e74546f6b656e22202278227d",
+   {
+    "restore": "error",
+    "register": "error",
+    "root": "error",
+    "registerResponse": "error"
+   }
+  ],
+  [
+   "7b276167656e74546f6b656e273a2778277d",
+   {
+    "restore": "error",
+    "register": "error",
+    "root": "error",
+    "registerResponse": "error"
+   }
+  ],
+  [
+   "7b226167656e74546f6b656e223a227822",
+   {
+    "restore": "error",
+    "register": "error",
+    "root": "error",
+    "registerResponse": "error"
+   }
+  ],
+  [
+   "7b226167656e74546f6b656e223a2278",
+   {
+    "restore": "error",
+    "register": "error",
+    "root": "error",
+    "registerResponse": "error"
+   }
+  ],
+  [
+   "7b226167656e74546f6b656e223a",
+   {
+    "restore": "error",
+    "register": "error",
+    "root": "error",
+    "registerResponse": "error"
+   }
+  ],
+  [
+   "7b226167656e74546f6b656e22",
+   {
+    "restore": "error",
+    "register": "error",
+    "root": "error",
+    "registerResponse": "error"
+   }
+  ],
+  [
+   "7b226167656e74",
+   {
+    "restore": "error",
+    "register": "error",
+    "root": "error",
+    "registerResponse": "error"
+   }
+  ],
+  [
+   "7b226167656e74546f6b656e223a2278225d",
+   {
+    "restore": "error",
+    "register": "error",
+    "root": "error",
+    "registerResponse": "error"
+   }
+  ],
+  [
+   "7b226167656e74546f6b656e223a227822202279227d",
+   {
+    "restore": "error",
+    "register": "error",
+    "root": "error",
+    "registerResponse": "error"
+   }
+  ],
+  [
+   "7b226167656e74546f6b656e223a22202073706163656420746f6b656e5c74227d",
+   {
+    "restore": "agentToken=202073706163656420746f6b656e09",
+    "register": "accountToken= symbol= faction= email=",
+    "root": "resetDate= next= frequency=",
+    "registerResponse": "token= symbol= credits=30"
+   }
+  ],
+  [
+   "7b226167656e74546f6b656e223a22227d",
+   {
+    "restore": "agentToken=",
+    "register": "accountToken= symbol= faction= email=",
+    "root": "resetDate= next= frequency=",
+    "registerResponse": "token= symbol= credits=30"
+   }
+  ],
+  [
+   "7b226f74686572223a2278227d",
+   {
+    "restore": "agentToken=",
+    "register": "accountToken= symbol= faction= email=",
+    "root": "resetDate= next= frequency=",
+    "registerResponse": "token= symbol= credits=30"
+   }
+  ],
+  [
+   "7b22756e6b6e6f776e223a7b2261223a5b312c322c7b2262223a6e756c6c7d5d7d2c226167656e74546f6b656e223a2264656570227d",
+   {
+    "restore": "agentToken=64656570",
+    "register": "accountToken= symbol= faction= email=",
+    "root": "resetDate= next= frequency=",
+    "registerResponse": "token= symbol= credits=30"
+   }
+  ],
+  [
+   "7b226167656e74546f6b656e223a225c75303065395c75643833645c7564653030227d",
+   {
+    "restore": "agentToken=c3a9f09f9880",
+    "register": "accountToken= symbol= faction= email=",
+    "root": "resetDate= next= frequency=",
+    "registerResponse": "token= symbol= credits=30"
+   }
+  ],
+  [
+   "7b226167656e74546f6b656e223a225c7564383030227d",
+   {
+    "restore": "agentToken=efbfbd",
+    "register": "accountToken= symbol= faction= email=",
+    "root": "resetDate= next= frequency=",
+    "registerResponse": "token= symbol= credits=30"
+   }
+  ],
+  [
+   "7b226167656e74546f6b656e223a225c75643830305c7530303431227d",
+   {
+    "restore": "agentToken=efbfbd41",
+    "register": "accountToken= symbol= faction= email=",
+    "root": "resetDate= next= frequency=",
+    "registerResponse": "token= symbol= credits=30"
+   }
+  ],
+  [
+   "7b226167656e74546f6b656e223a225c75646330305c7564383030227d",
+   {
+    "restore": "agentToken=efbfbdefbfbd",
+    "register": "accountToken= symbol= faction= email=",
+    "root": "resetDate= next= frequency=",
+    "registerResponse": "token= symbol= credits=30"
+   }
+  ],
+  [
+   "7b226167656e74546f6b656e223a225c75643830305c75643830305c7564633030227d",
+   {
+    "restore": "agentToken=efbfbdf0908080",
+    "register": "accountToken= symbol= faction= email=",
+    "root": "resetDate= next= frequency=",
+    "registerResponse": "token= symbol= credits=30"
+   }
+  ],
+  [
+   "7b226167656e74546f6b656e223a225c7564383364227d",
+   {
+    "restore": "agentToken=efbfbd",
+    "register": "accountToken= symbol= faction= email=",
+    "root": "resetDate= next= frequency=",
+    "registerResponse": "token= symbol= credits=30"
+   }
+  ],
+  [
+   "7b226167656e74546f6b656e223a225c75444530305c75443833445c7544453030227d",
+   {
+    "restore": "agentToken=efbfbdf09f9880",
+    "register": "accountToken= symbol= faction= email=",
+    "root": "resetDate= next= frequency=",
+    "registerResponse": "token= symbol= credits=30"
+   }
+  ],
+  [
+   "7b226167656e74546f6b656e223a225c7530303030227d",
+   {
+    "restore": "agentToken=00",
+    "register": "accountToken= symbol= faction= email=",
+    "root": "resetDate= next= frequency=",
+    "registerResponse": "token= symbol= credits=30"
+   }
+  ],
+  [
+   "7b226167656e74546f6b656e223a225c783431227d",
+   {
+    "restore": "error",
+    "register": "error",
+    "root": "error",
+    "registerResponse": "error"
+   }
+  ],
+  [
+   "7b226167656e74546f6b656e223a225c753132227d",
+   {
+    "restore": "error",
+    "register": "error",
+    "root": "error",
+    "registerResponse": "error"
+   }
+  ],
+  [
+   "7b226167656e74546f6b656e223a225c7531324734227d",
+   {
+    "restore": "error",
+    "register": "error",
+    "root": "error",
+    "registerResponse": "error"
+   }
+  ],
+  [
+   "7b226167656e74546f6b656e223a225c2f5c625c665c6e5c725c745c225c5c227d",
+   {
+    "restore": "agentToken=2f080c0a0d09225c",
+    "register": "accountToken= symbol= faction= email=",
+    "root": "resetDate= next= frequency=",
+    "registerResponse": "token= symbol= credits=30"
+   }
+  ],
+  [
+   "7b226167656e74546f6b656e223a22610a62227d",
+   {
+    "restore": "error",
+    "register": "error",
+    "root": "error",
+    "registerResponse": "error"
+   }
+  ],
+  [
+   "7b226167656e74546f6b656e223a22610962227d",
+   {
+    "restore": "error",
+    "register": "error",
+    "root": "error",
+    "registerResponse": "error"
+   }
+  ],
+  [
+   "7b226167656e74546f6b656e223a22617f62227d",
+   {
+    "restore": "agentToken=617f62",
+    "register": "accountToken= symbol= faction= email=",
+    "root": "resetDate= next= frequency=",
+    "registerResponse": "token= symbol= credits=30"
+   }
+  ],
+  [
+   "7b226167656e74546f6b656e223a22611f62227d",
+   {
+    "restore": "error",
+    "register": "error",
+    "root": "error",
+    "registerResponse": "error"
+   }
+  ],
+  [
+   "7b226167656e74546f6b656e223a22c3a9227d",
+   {
+    "restore": "agentToken=c3a9",
+    "register": "accountToken= symbol= faction= email=",
+    "root": "resetDate= next= frequency=",
+    "registerResponse": "token= symbol= credits=30"
+   }
+  ],
+  [
+   "7b226167656e74546f6b656e223a22ff227d",
+   {
+    "restore": "agentToken=efbfbd",
+    "register": "accountToken= symbol= faction= email=",
+    "root": "resetDate= next= frequency=",
+    "registerResponse": "token= symbol= credits=30"
+   }
+  ],
+  [
+   "7b226167656e74546f6b656e223a22c3227d",
+   {
+    "restore": "agentToken=efbfbd",
+    "register": "accountToken= symbol= faction= email=",
+    "root": "resetDate= next= frequency=",
+    "registerResponse": "token= symbol= credits=30"
+   }
+  ],
+  [
+   "7b226167656e74546f6b656e223a22e28278227d",
+   {
+    "restore": "agentToken=efbfbdefbfbd78",
+    "register": "accountToken= symbol= faction= email=",
+    "root": "resetDate= next= frequency=",
+    "registerResponse": "token= symbol= credits=30"
+   }
+  ],
+  [
+   "7b226167656e74546f6b656e223a22eda080227d",
+   {
+    "restore": "agentToken=efbfbdefbfbdefbfbd",
+    "register": "accountToken= symbol= faction= email=",
+    "root": "resetDate= next= frequency=",
+    "registerResponse": "token= symbol= credits=30"
+   }
+  ],
+  [
+   "7b226167656e74546f6b656e223a22f09f9880227d",
+   {
+    "restore": "agentToken=f09f9880",
+    "register": "accountToken= symbol= faction= email=",
+    "root": "resetDate= next= frequency=",
+    "registerResponse": "token= symbol= credits=30"
+   }
+  ],
+  [
+   "7b226167656e74546f6b656e223a22c0af227d",
+   {
+    "restore": "agentToken=efbfbdefbfbd",
+    "register": "accountToken= symbol= faction= email=",
+    "root": "resetDate= next= frequency=",
+    "registerResponse": "token= symbol= credits=30"
+   }
+  ],
+  [
+   "7b226167656e74546f6b656e223a22e08080227d",
+   {
+    "restore": "agentToken=efbfbdefbfbdefbfbd",
+    "register": "accountToken= symbol= faction= email=",
+    "root": "resetDate= next= frequency=",
+    "registerResponse": "token= symbol= credits=30"
+   }
+  ],
+  [
+   "7b226167656e74546f6b656e223a22f4908080227d",
+   {
+    "restore": "agentToken=efbfbdefbfbdefbfbdefbfbd",
+    "register": "accountToken= symbol= faction= email=",
+    "root": "resetDate= next= frequency=",
+    "registerResponse": "token= symbol= credits=30"
+   }
+  ],
+  [
+   "7b226167656e74546f6b656e223a22f09f98227d",
+   {
+    "restore": "agentToken=efbfbdefbfbdefbfbd",
+    "register": "accountToken= symbol= faction= email=",
+    "root": "resetDate= next= frequency=",
+    "registerResponse": "token= symbol= credits=30"
+   }
+  ],
+  [
+   "7b226167656e74546f6b656e223a228080227d",
+   {
+    "restore": "agentToken=efbfbdefbfbd",
+    "register": "accountToken= symbol= faction= email=",
+    "root": "resetDate= next= frequency=",
+    "registerResponse": "token= symbol= credits=30"
+   }
+  ],
+  [
+   "7b226167656e74546f6b656e223a22efbfbd227d",
+   {
+    "restore": "agentToken=efbfbd",
+    "register": "accountToken= symbol= faction= email=",
+    "root": "resetDate= next= frequency=",
+    "registerResponse": "token= symbol= credits=30"
+   }
+  ],
+  [
+   "7b226167656e74ff546f6b656e223a226261646b6579227d",
+   {
+    "restore": "agentToken=",
+    "register": "accountToken= symbol= faction= email=",
+    "root": "resetDate= next= frequency=",
+    "registerResponse": "token= symbol= credits=30"
+   }
+  ],
+  [
+   "7b226167656e74546f6b656e223a2278227dff",
+   {
+    "restore": "agentToken=78",
+    "register": "accountToken= symbol= faction= email=",
+    "root": "error",
+    "registerResponse": "error"
+   }
+  ],
+  [
+   "ff7b226167656e74546f6b656e223a2278227d",
+   {
+    "restore": "error",
+    "register": "error",
+    "root": "error",
+    "registerResponse": "error"
+   }
+  ],
+  [
+   "7b226163636f756e74546f6b656e223a2274222c2273796d626f6c223a2253222c2266616374696f6e223a2246222c22656d61696c223a2265227d",
+   {
+    "restore": "agentToken=",
+    "register": "accountToken=74 symbol=53 faction=46 email=65",
+    "root": "resetDate= next= frequency=",
+    "registerResponse": "token= symbol= credits=30"
+   }
+  ],
+  [
+   "7b226163636f756e74546f6b656e223a2274222c2273796d626f6c223a2253222c2266616374696f6e223a2246227d",
+   {
+    "restore": "agentToken=",
+    "register": "accountToken=74 symbol=53 faction=46 email=",
+    "root": "resetDate= next= frequency=",
+    "registerResponse": "token= symbol= credits=30"
+   }
+  ],
+  [
+   "7b224143434f554e54544f4b454e223a2274222c2253796d626f6c223a226d69786564222c2246414354494f4e223a2246222c22756e6b6e6f776e223a5b315d2c2278223a6e756c6c7d20747261696c696e67",
+   {
+    "restore": "agentToken=",
+    "register": "accountToken=74 symbol=6d69786564 faction=46 email=",
+    "root": "error",
+    "registerResponse": "error"
+   }
+  ],
+  [
+   "7b226163636f756e74546f6b656e223a2274222c22c5bf796d626f6c223a226c6f6e6773222c2266616374696f6e223a2246227d",
+   {
+    "restore": "agentToken=",
+    "register": "accountToken=74 symbol=6c6f6e6773 faction=46 email=",
+    "root": "resetDate= next= frequency=",
+    "registerResponse": "token= symbol= credits=30"
+   }
+  ],
+  [
+   "7b226163636f756e74546f6b656e223a2274222c2273796d626f6c223a2253222c2266616374496f6e223a2246222c22656d61c4b16c223a22646f746c657373227d",
+   {
+    "restore": "agentToken=",
+    "register": "accountToken=74 symbol=53 faction=46 email=",
+    "root": "resetDate= next= frequency=",
+    "registerResponse": "token= symbol= credits=30"
+   }
+  ],
+  [
+   "7b22656d61c4b06c223a22646f74746564222c226163636f756e74546f6b656e223a2274227d",
+   {
+    "restore": "agentToken=",
+    "register": "accountToken=74 symbol= faction= email=",
+    "root": "resetDate= next= frequency=",
+    "registerResponse": "token= symbol= credits=30"
+   }
+  ],
+  [
+   "7b22656d61c3ac6c223a226772617665227d",
+   {
+    "restore": "agentToken=",
+    "register": "accountToken= symbol= faction= email=",
+    "root": "resetDate= next= frequency=",
+    "registerResponse": "token= symbol= credits=30"
+   }
+  ],
+  [
+   "7b22e284aa6579223a226b227d",
+   {
+    "restore": "agentToken=",
+    "register": "accountToken= symbol= faction= email=",
+    "root": "resetDate= next= frequency=",
+    "registerResponse": "token= symbol= credits=30"
+   }
+  ],
+  [
+   "7b22656d61696c223a352c226163636f756e74546f6b656e223a2274222c2273796d626f6c223a2241222c2266616374696f6e223a2242227d",
+   {
+    "restore": "agentToken=",
+    "register": "error",
+    "root": "resetDate= next= frequency=",
+    "registerResponse": "token= symbol= credits=30"
+   }
+  ],
+  [
+   "7b2273796d626f6c223a5b2241225d7d",
+   {
+    "restore": "agentToken=",
+    "register": "error",
+    "root": "resetDate= next= frequency=",
+    "registerResponse": "token= symbol= credits=30"
+   }
+  ],
+  [
+   "7b226163636f756e74546f6b656e223a312c2273796d626f6c223a2241222c2266616374696f6e223a2242227d",
+   {
+    "restore": "agentToken=",
+    "register": "error",
+    "root": "resetDate= next= frequency=",
+    "registerResponse": "token= symbol= credits=30"
+   }
+  ],
+  [
+   "7b226163636f756e74546f6b656e223a6e756c6c2c2273796d626f6c223a2241222c2266616374696f6e223a2242227d",
+   {
+    "restore": "agentToken=",
+    "register": "accountToken= symbol=41 faction=42 email=",
+    "root": "resetDate= next= frequency=",
+    "registerResponse": "token= symbol= credits=30"
+   }
+  ],
+  [
+   "7b2273796d626f6c223a2241222c2266616374696f6e223a2242222c22656d61696c223a6e756c6c7d",
+   {
+    "restore": "agentToken=",
+    "register": "accountToken= symbol=41 faction=42 email=",
+    "root": "resetDate= next= frequency=",
+    "registerResponse": "token= symbol= credits=30"
+   }
+  ],
+  [
+   "7b226163636f756e74546f6b656e223a2273706163656420746f6b20656e222c2273796d626f6c223a22c3bc6ec3af222c2266616374696f6e223a22782079227d",
+   {
+    "restore": "agentToken=",
+    "register": "accountToken=73706163656420746f6b20656e symbol=c3bc6ec3af faction=782079 email=",
+    "root": "resetDate= next= frequency=",
+    "registerResponse": "token= symbol= credits=30"
+   }
+  ],
+  [
+   "7b2275223a31653430307d",
+   {
+    "restore": "agentToken=",
+    "register": "accountToken= symbol= faction= email=",
+    "root": "resetDate= next= frequency=",
+    "registerResponse": "token= symbol= credits=30"
+   }
+  ],
+  [
+   "7b2275223a2d302e35652d337d",
+   {
+    "restore": "agentToken=",
+    "register": "accountToken= symbol= faction= email=",
+    "root": "resetDate= next= frequency=",
+    "registerResponse": "token= symbol= credits=30"
+   }
+  ],
+  [
+   "7b2275223a30317d",
+   {
+    "restore": "error",
+    "register": "error",
+    "root": "error",
+    "registerResponse": "error"
+   }
+  ],
+  [
+   "7b2275223a312e7d",
+   {
+    "restore": "error",
+    "register": "error",
+    "root": "error",
+    "registerResponse": "error"
+   }
+  ],
+  [
+   "7b2275223a2e357d",
+   {
+    "restore": "error",
+    "register": "error",
+    "root": "error",
+    "registerResponse": "error"
+   }
+  ],
+  [
+   "7b2275223a2b317d",
+   {
+    "restore": "error",
+    "register": "error",
+    "root": "error",
+    "registerResponse": "error"
+   }
+  ],
+  [
+   "7b2275223a31657d",
+   {
+    "restore": "error",
+    "register": "error",
+    "root": "error",
+    "registerResponse": "error"
+   }
+  ],
+  [
+   "7b2275223a31652b7d",
+   {
+    "restore": "error",
+    "register": "error",
+    "root": "error",
+    "registerResponse": "error"
+   }
+  ],
+  [
+   "7b2275223a2d7d",
+   {
+    "restore": "error",
+    "register": "error",
+    "root": "error",
+    "registerResponse": "error"
+   }
+  ],
+  [
+   "7b2275223a3145357d",
+   {
+    "restore": "agentToken=",
+    "register": "accountToken= symbol= faction= email=",
+    "root": "resetDate= next= frequency=",
+    "registerResponse": "token= symbol= credits=30"
+   }
+  ],
+  [
+   "7b2275223a2d307d",
+   {
+    "restore": "agentToken=",
+    "register": "accountToken= symbol= faction= email=",
+    "root": "resetDate= next= frequency=",
+    "registerResponse": "token= symbol= credits=30"
+   }
+  ],
+  [
+   "7b2275223a307831307d",
+   {
+    "restore": "error",
+    "register": "error",
+    "root": "error",
+    "registerResponse": "error"
+   }
+  ],
+  [
+   "7b2275223a4e614e7d",
+   {
+    "restore": "error",
+    "register": "error",
+    "root": "error",
+    "registerResponse": "error"
+   }
+  ],
+  [
+   "7b2275223a496e66696e6974797d",
+   {
+    "restore": "error",
+    "register": "error",
+    "root": "error",
+    "registerResponse": "error"
+   }
+  ],
+  [
+   "7b2275223a7472757d",
+   {
+    "restore": "error",
+    "register": "error",
+    "root": "error",
+    "registerResponse": "error"
+   }
+  ],
+  [
+   "7b2275223a6e756c7d",
+   {
+    "restore": "error",
+    "register": "error",
+    "root": "error",
+    "registerResponse": "error"
+   }
+  ],
+  [
+   "7b2275223a5b312c5d7d",
+   {
+    "restore": "error",
+    "register": "error",
+    "root": "error",
+    "registerResponse": "error"
+   }
+  ],
+  [
+   "7b2275223a5b2c315d7d",
+   {
+    "restore": "error",
+    "register": "error",
+    "root": "error",
+    "registerResponse": "error"
+   }
+  ],
+  [
+   "7b2275223a5b3120325d7d",
+   {
+    "restore": "error",
+    "register": "error",
+    "root": "error",
+    "registerResponse": "error"
+   }
+  ],
+  [
+   "7b22726573657444617465223a22323032362d30392d3031222c22736572766572526573657473223a7b226e657874223a22323039392d30312d30315430303a30303a30305a222c226672657175656e6379223a227765656b6c79227d7d",
+   {
+    "restore": "agentToken=",
+    "register": "accountToken= symbol= faction= email=",
+    "root": "resetDate=323032362d30392d3031 next=323039392d30312d30315430303a30303a30305a frequency=7765656b6c79",
+    "registerResponse": "token= symbol= credits=30"
+   }
+  ],
+  [
+   "7b22726573657444617465223a357d",
+   {
+    "restore": "agentToken=",
+    "register": "accountToken= symbol= faction= email=",
+    "root": "error",
+    "registerResponse": "token= symbol= credits=30"
+   }
+  ],
+  [
+   "7b22736572766572526573657473223a2278227d",
+   {
+    "restore": "agentToken=",
+    "register": "accountToken= symbol= faction= email=",
+    "root": "error",
+    "registerResponse": "token= symbol= credits=30"
+   }
+  ],
+  [
+   "7b22736572766572526573657473223a6e756c6c7d",
+   {
+    "restore": "agentToken=",
+    "register": "accountToken= symbol= faction= email=",
+    "root": "resetDate= next= frequency=",
+    "registerResponse": "token= symbol= credits=30"
+   }
+  ],
+  [
+   "7b22736572766572526573657473223a5b5d7d",
+   {
+    "restore": "agentToken=",
+    "register": "accountToken= symbol= faction= email=",
+    "root": "error",
+    "registerResponse": "token= symbol= credits=30"
+   }
+  ],
+  [
+   "7b22524553455444415445223a2264222c22534552564552524553455453223a7b224e455854223a226e222c224672657175656e6379223a2266227d7d",
+   {
+    "restore": "agentToken=",
+    "register": "accountToken= symbol= faction= email=",
+    "root": "resetDate=64 next=6e frequency=66",
+    "registerResponse": "token= symbol= credits=30"
+   }
+  ],
+  [
+   "7b22726573657464617465223a2264222c22726573657444617465223a2265227d",
+   {
+    "restore": "agentToken=",
+    "register": "accountToken= symbol= faction= email=",
+    "root": "resetDate=65 next= frequency=",
+    "registerResponse": "token= symbol= credits=30"
+   }
+  ],
+  [
+   "7b22736572766572526573657473223a7b226e657874223a317d7d",
+   {
+    "restore": "agentToken=",
+    "register": "accountToken= symbol= faction= email=",
+    "root": "error",
+    "registerResponse": "token= symbol= credits=30"
+   }
+  ],
+  [
+   "7b22726573657444617465223a2278222c22737461747573223a225370616365547261646572732069732063757272656e746c79206f6e6c696e65222c227374617473223a7b226167656e7473223a317d7d",
+   {
+    "restore": "agentToken=",
+    "register": "accountToken= symbol= faction= email=",
+    "root": "resetDate=78 next= frequency=",
+    "registerResponse": "token= symbol= credits=30"
+   }
+  ],
+  [
+   "7b2264617461223a7b22746f6b656e223a2274222c226167656e74223a7b2273796d626f6c223a2253222c2263726564697473223a317d7d7d",
+   {
+    "restore": "agentToken=",
+    "register": "accountToken= symbol= faction= email=",
+    "root": "resetDate= next= frequency=",
+    "registerResponse": "token=74 symbol=53 credits=31"
+   }
+  ],
+  [
+   "7b2264617461223a7b22746f6b656e223a2274222c226167656e74223a7b2273796d626f6c223a2253222c2263726564697473223a312e307d7d7d",
+   {
+    "restore": "agentToken=",
+    "register": "accountToken= symbol= faction= email=",
+    "root": "resetDate= next= frequency=",
+    "registerResponse": "error"
+   }
+  ],
+  [
+   "7b2264617461223a7b226167656e74223a7b2263726564697473223a3165327d7d7d",
+   {
+    "restore": "agentToken=",
+    "register": "accountToken= symbol= faction= email=",
+    "root": "resetDate= next= frequency=",
+    "registerResponse": "error"
+   }
+  ],
+  [
+   "7b2264617461223a7b226167656e74223a7b2263726564697473223a2d307d7d7d",
+   {
+    "restore": "agentToken=",
+    "register": "accountToken= symbol= faction= email=",
+    "root": "resetDate= next= frequency=",
+    "registerResponse": "token= symbol= credits=30"
+   }
+  ],
+  [
+   "7b2264617461223a7b226167656e74223a7b2263726564697473223a393232333337323033363835343737353830377d7d7d",
+   {
+    "restore": "agentToken=",
+    "register": "accountToken= symbol= faction= email=",
+    "root": "resetDate= next= frequency=",
+    "registerResponse": "token= symbol= credits=39323233333732303336383534373735383037"
+   }
+  ],
+  [
+   "7b2264617461223a7b226167656e74223a7b2263726564697473223a393232333337323033363835343737353830387d7d7d",
+   {
+    "restore": "agentToken=",
+    "register": "accountToken= symbol= faction= email=",
+    "root": "resetDate= next= frequency=",
+    "registerResponse": "error"
+   }
+  ],
+  [
+   "7b2264617461223a7b226167656e74223a7b2263726564697473223a2d393232333337323033363835343737353830387d7d7d",
+   {
+    "restore": "agentToken=",
+    "register": "accountToken= symbol= faction= email=",
+    "root": "resetDate= next= frequency=",
+    "registerResponse": "token= symbol= credits=2d39323233333732303336383534373735383038"
+   }
+  ],
+  [
+   "7b2264617461223a7b226167656e74223a7b2263726564697473223a2d393232333337323033363835343737353830397d7d7d",
+   {
+    "restore": "agentToken=",
+    "register": "accountToken= symbol= faction= email=",
+    "root": "resetDate= next= frequency=",
+    "registerResponse": "error"
+   }
+  ],
+  [
+   "7b2264617461223a7b226167656e74223a7b2263726564697473223a2231227d7d7d",
+   {
+    "restore": "agentToken=",
+    "register": "accountToken= symbol= faction= email=",
+    "root": "resetDate= next= frequency=",
+    "registerResponse": "error"
+   }
+  ],
+  [
+   "7b2264617461223a7b226167656e74223a7b2263726564697473223a747275657d7d7d",
+   {
+    "restore": "agentToken=",
+    "register": "accountToken= symbol= faction= email=",
+    "root": "resetDate= next= frequency=",
+    "registerResponse": "error"
+   }
+  ],
+  [
+   "7b2264617461223a7b226167656e74223a7b2263726564697473223a6e756c6c7d7d7d",
+   {
+    "restore": "agentToken=",
+    "register": "accountToken= symbol= faction= email=",
+    "root": "resetDate= next= frequency=",
+    "registerResponse": "token= symbol= credits=30"
+   }
+  ],
+  [
+   "7b2264617461223a6e756c6c7d",
+   {
+    "restore": "agentToken=",
+    "register": "accountToken= symbol= faction= email=",
+    "root": "resetDate= next= frequency=",
+    "registerResponse": "token= symbol= credits=30"
+   }
+  ],
+  [
+   "7b2264617461223a5b5d7d",
+   {
+    "restore": "agentToken=",
+    "register": "accountToken= symbol= faction= email=",
+    "root": "resetDate= next= frequency=",
+    "registerResponse": "error"
+   }
+  ],
+  [
+   "7b2264617461223a7b226167656e74223a7b2263726564697473223a312e357d7d2c2278223a317d",
+   {
+    "restore": "agentToken=",
+    "register": "accountToken= symbol= faction= email=",
+    "root": "resetDate= next= frequency=",
+    "registerResponse": "error"
+   }
+  ],
+  [
+   "7b2264617461223a7b22746f6b656e223a22222c226167656e74223a7b2273796d626f6c223a22454d505459222c2263726564697473223a307d7d7d",
+   {
+    "restore": "agentToken=",
+    "register": "accountToken= symbol= faction= email=",
+    "root": "resetDate= next= frequency=",
+    "registerResponse": "token= symbol=454d505459 credits=30"
+   }
+  ],
+  [
+   "7b2264617461223a7b226167656e74223a7b2273796d626f6c223a224e4f544f4b454e227d7d7d",
+   {
+    "restore": "agentToken=",
+    "register": "accountToken= symbol= faction= email=",
+    "root": "resetDate= next= frequency=",
+    "registerResponse": "token= symbol=4e4f544f4b454e credits=30"
+   }
+  ],
+  [
+   "7b2264617461223a7b22746f6b656e223a22742d323030222c226578747261223a5b315d2c226167656e74223a7b2273796d626f6c223a2253222c2263726564697473223a392c226d6f7265223a7b7d7d7d2c226d657461223a7b7d7d",
+   {
+    "restore": "agentToken=",
+    "register": "accountToken= symbol= faction= email=",
+    "root": "resetDate= next= frequency=",
+    "registerResponse": "token=742d323030 symbol=53 credits=39"
+   }
+  ],
+  [
+   "7b2244415441223a7b22544f4b454e223a227570227d7d",
+   {
+    "restore": "agentToken=",
+    "register": "accountToken= symbol= faction= email=",
+    "root": "resetDate= next= frequency=",
+    "registerResponse": "token=7570 symbol= credits=30"
+   }
+  ],
+  [
+   "3c68746d6c3e3c2f68746d6c3e",
+   {
+    "restore": "error",
+    "register": "error",
+    "root": "error",
+    "registerResponse": "error"
+   }
+  ],
+  [
+   "6e6f74206a736f6e",
+   {
+    "restore": "error",
+    "register": "error",
+    "root": "error",
+    "registerResponse": "error"
+   }
+  ]
+ ],
+ "flexibleTimes": [
+  [
+   "",
+   "zero"
+  ],
+  [
+   "323032362d30392d3031",
+   "2026-09-01T00:00:00Z 1788220800 0"
+  ],
+  [
+   "323032362d392d3031",
+   "zero"
+  ],
+  [
+   "323032362d30392d31",
+   "zero"
+  ],
+  [
+   "323032362d30322d3239",
+   "zero"
+  ],
+  [
+   "323032342d30322d3239",
+   "2024-02-29T00:00:00Z 1709164800 0"
+  ],
+  [
+   "323032362d30342d3331",
+   "zero"
+  ],
+  [
+   "323032362d30342d3330",
+   "2026-04-30T00:00:00Z 1777507200 0"
+  ],
+  [
+   "303030302d30312d3031",
+   "0000-01-01T00:00:00Z -62167219200 0"
+  ],
+  [
+   "303030312d30312d3031",
+   "zero"
+  ],
+  [
+   "393939392d31322d3331",
+   "9999-12-31T00:00:00Z 253402214400 0"
+  ],
+  [
+   "303030312d30312d30315430303a30303a30305a",
+   "zero"
+  ],
+  [
+   "303030312d30312d30315430323a30303a30302b30323a3030",
+   "zero"
+  ],
+  [
+   "303030312d30312d30315430303a30303a30302e3030303030303030315a",
+   "0001-01-01T00:00:00Z -62135596800 1"
+  ],
+  [
+   "303030312d30312d30315430303a30303a30302e3030315a",
+   "0001-01-01T00:00:00Z -62135596800 1000000"
+  ],
+  [
+   "323032362d30392d30315430303a30303a30302e3132333435363738395a",
+   "2026-09-01T00:00:00Z 1788220800 123456789"
+  ],
+  [
+   "323032362d30392d30315430303a30303a30302e303030315a",
+   "2026-09-01T00:00:00Z 1788220800 100000"
+  ],
+  [
+   "323032362d30392d30315430303a30303a30302e313233343536373839315a",
+   "2026-09-01T00:00:00Z 1788220800 123456789"
+  ],
+  [
+   "323032362d30392d30315430303a30303a30302c355a",
+   "2026-09-01T00:00:00Z 1788220800 500000000"
+  ],
+  [
+   "20323032362d30392d3031",
+   "zero"
+  ],
+  [
+   "323032362d30392d303120",
+   "zero"
+  ],
+  [
+   "323032362d30392d303154",
+   "zero"
+  ],
+  [
+   "3230323630393031",
+   "zero"
+  ],
+  [
+   "323032362f30392f3031",
+   "zero"
+  ],
+  [
+   "6e6f742d612d64617465",
+   "zero"
+  ],
+  [
+   "323039392f30312f3031",
+   "zero"
+  ],
+  [
+   "2b323032362d30392d3031",
+   "zero"
+  ],
+  [
+   "323032362d31332d3031",
+   "zero"
+  ],
+  [
+   "323032362d30302d3130",
+   "zero"
+  ],
+  [
+   "323032362d30312d3030",
+   "zero"
+  ],
+  [
+   "efbc923032362d30312d3031",
+   "zero"
+  ],
+  [
+   "323032362d30392d30315a",
+   "zero"
+  ],
+  [
+   "323032362d30392d30315430383a33303a30302b30323a3030",
+   "2026-09-01T08:30:00+02:00 1788244200 0"
+  ],
+  [
+   "323039392d30332d30345430353a30363a30372e3839312b30353a3330",
+   "2099-03-04T05:06:07+05:30 4076264167 891000000"
+  ],
+  [
+   "323032362d30392d30317430303a30303a30307a",
+   "zero"
+  ],
+  [
+   "323039392d30312d30315430303a30303a30305a",
+   "2099-01-01T00:00:00Z 4070908800 0"
+  ],
+  [
+   "323032302d30312d30315430303a30303a30305a",
+   "2020-01-01T00:00:00Z 1577836800 0"
+  ],
+  [
+   "323032362d30392d30315430303a30303a3030",
+   "zero"
+  ],
+  [
+   "323032362d30392d30315432343a30303a30305a",
+   "zero"
+  ],
+  [
+   "323032362d30392d30315430303a30303a30302d30303a3030",
+   "2026-09-01T00:00:00Z 1788220800 0"
+  ]
+ ],
+ "goVersion": "go1.22.4"
+}
