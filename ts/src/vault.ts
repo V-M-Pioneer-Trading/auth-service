@@ -19,7 +19,7 @@ import type { DatabaseSync } from "node:sqlite";
 
 import { NoCredentialConfigured, sqliteVaultStore, type Credential, type VaultStore } from "./db/credential";
 import { decodeFirst, firstValueComplete, GoJsonError, type Decoded, type Shape } from "./goJson";
-import { readBody } from "./http/body";
+import { CallerGone, readBody } from "./http/body";
 import { parseQuery } from "./http/goForm";
 import { TextAnswer } from "./http/json";
 import { firstHeader } from "./introspection";
@@ -27,6 +27,9 @@ import type { Verifier } from "./jwt/verify";
 import type { Logger } from "./log";
 import { Poller } from "./poller";
 import { describeError, spaceTradersClient, UpstreamError, type RegisterResult } from "./spacetraders/client";
+
+/** The caller hung up: its connection is gone (the request was read, so only the socket says so). */
+const callerGone = (req: IncomingMessage): boolean => req.socket.destroyed;
 
 /** The header st-gateway presents to `GET /auth/v1/token`. */
 export const VAULT_SECRET_HEADER = "X-Auth-Service-Secret";
@@ -164,19 +167,22 @@ const REGISTER_SHAPE = { accountToken: "string", symbol: "string", faction: "str
  * Restore Token (decision 8): a regenerated agent token for the EXISTING agent, the only recovery from
  * APP_TOKEN_EXPIRED. Only the agent token changes, verbatim; the flag clears; no upstream call.
  */
-export async function restoreToken(req: IncomingMessage, deps: VaultDeps, nowMs: number): Promise<{ status: "restored" }> {
+export async function restoreToken(req: IncomingMessage, deps: VaultDeps, nowMs: () => number): Promise<{ status: "restored" }> {
   const body = await decodeBody(req, RESTORE_SHAPE, "api.restoreTokenRequest");
   if (body.agentToken === "") throw new TextAnswer(400, "agentToken is required");
   // On the poll queue: a forced poll in flight would otherwise raise the expired flag again after this clears it.
   await deps.poller.exclusive(() => {
+    if (callerGone(req)) throw new CallerGone();
+    // The time of the write, not of the request: the queue may have held it.
+    const now = nowMs();
     try {
-      deps.store.updateAgentToken(body.agentToken, nowMs);
+      deps.store.updateAgentToken(body.agentToken, now);
     } catch (err) {
       if (err instanceof NoCredentialConfigured) throw new TextAnswer(409, err.message);
       throw new TextAnswer(500, describeError(err));
     }
     try {
-      deps.store.appendHistory(nowMs, "token_restored", "");
+      deps.store.appendHistory(now, "token_restored", "");
     } catch (err) {
       deps.log(`failed to record token_restored: ${describeError(err)}`);
     }
@@ -189,6 +195,12 @@ export async function restoreToken(req: IncomingMessage, deps: VaultDeps, nowMs:
  * is what later automatic re-registrations reuse; the flag and the dates are cleared), then one best-effort poll so
  * the status has dates at once. The answer's `agentSymbol` is SpaceTraders'. Upstream's 4xx/5xx is passed through with
  * its raw body (writeIfError); anything else that fails upstream is 502.
+ *
+ * How long it can take: it waits on the poll queue for what is in flight, a poll being up to two upstream calls (the
+ * root, then a re-registration when it finds a wipe), then makes its own registration and the poll after it. Each
+ * call is bounded at 30 s, so with one poll ahead of it the worst case is four of them, about two minutes; each further
+ * item already queued (a forced poll, the other operator route) adds its own bound. Go ran it beside the poll: one
+ * registration and one root fetch, 60 s.
  */
 export async function registerAgent(req: IncomingMessage, deps: VaultDeps, nowMs: () => number): Promise<{ agentSymbol: string; status: "registered" }> {
   const body = await decodeBody(req, REGISTER_SHAPE, "api.registerRequest");
@@ -196,7 +208,12 @@ export async function registerAgent(req: IncomingMessage, deps: VaultDeps, nowMs
 
   // Registration and the write, on the poll queue: a re-registration in flight would otherwise write the OLD account
   // back over this one.
-  const result = await deps.poller.exclusive(() => registerAndStore(body, deps, nowMs));
+  // A caller who hung up while this waited is not registered for: nothing has been sent or written yet. Once the
+  // registration has been sent it is stored whatever happens to the caller (SpaceTraders has minted the agent).
+  const result = await deps.poller.exclusive(() => {
+    if (callerGone(req)) throw new CallerGone();
+    return registerAndStore(body, deps, nowMs);
+  });
   try {
     await deps.poller.tick(false);
   } catch (err) {

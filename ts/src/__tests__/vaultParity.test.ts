@@ -103,8 +103,22 @@ describe("encoding/json as the vault uses it", () => {
     ['{"data":{"token":5}}', "json: cannot unmarshal number into Go struct field .data.token of type string"],
     ["[]", "json: cannot unmarshal array into Go value of type spacetraders.rawRegisterResponse"],
     ["x", "invalid character 'x' looking for beginning of value"],
+    // The end of the input inside a literal or a number is Go's scanner reading one more byte, a space.
+    ["1e", "invalid character ' ' in exponent of numeric literal"],
+    ["-", "invalid character ' ' in numeric literal"],
+    ["1.", "invalid character ' ' after decimal point in numeric literal"],
+    ['{"data":nul', "invalid character ' ' in literal null (expecting 'l')"],
+    ['{"data":{"token":"x', "unexpected end of JSON input"],
+    ["[1", "unexpected end of JSON input"],
+    // A nested anonymous struct is named by its full Go type.
+    ['{"data":[]}', 'json: cannot unmarshal array into Go struct field rawRegisterResponse.data of type struct { Token string "json:\\\"token\\\""; Agent struct { Symbol string "json:\\\"symbol\\\""; Credits int "json:\\\"credits\\\"" } "json:\\\"agent\\\"" }'],
+    ['{"data":{"agent":"x"}}', 'json: cannot unmarshal string into Go struct field .data.agent of type struct { Symbol string "json:\\\"symbol\\\""; Credits int "json:\\\"credits\\\"" }'],
   ])("says why as Go's Unmarshal does: %j", (input, go) => {
     expect(why(input, REGISTER_RESPONSE, "spacetraders.rawRegisterResponse", unmarshal)).toBe(go);
+  });
+
+  it("ends a Decoder's value cut short inside a number as Go's Decoder does: unexpected EOF", () => {
+    for (const input of ["1e", "-", "1.", "nul", '{"agentToken":1e']) expect(why(input)).toBe("unexpected EOF");
   });
 
   it("never repeats the body", () => {

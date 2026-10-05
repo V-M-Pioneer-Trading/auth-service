@@ -205,20 +205,20 @@ describe("parseFlexibleTime", () => {
 
 describe("redirects, as Go's http.Client follows them", () => {
   let other: http.Server;
-  let otherBase: string;
+  let otherPort: number;
   let otherSeen: Seen[] = [];
+  let otherReply: (req: http.IncomingMessage, res: http.ServerResponse) => void;
   beforeAll(async () => {
     other = http.createServer((req, res) => {
       const chunks: Buffer[] = [];
       req.on("data", (c: Buffer) => chunks.push(c));
       req.on("end", () => {
         otherSeen.push({ method: req.method ?? "", url: req.url ?? "", headers: req.headers, rawHeaders: req.rawHeaders, body: Buffer.concat(chunks) });
-        res.writeHead(201, { "content-type": "application/json" });
-        res.end('{"data":{"token":"from-other","agent":{"symbol":"O"}}}');
+        otherReply(req, res);
       });
     });
     await new Promise<void>((resolve) => other.listen(0, "127.0.0.1", resolve));
-    otherBase = `http://127.0.0.1:${String((other.address() as AddressInfo).port)}`;
+    otherPort = (other.address() as AddressInfo).port;
   });
   afterAll(async () => {
     other.closeAllConnections();
@@ -226,8 +226,10 @@ describe("redirects, as Go's http.Client follows them", () => {
   });
   beforeEach(() => {
     otherSeen = [];
+    otherReply = json(201, '{"data":{"token":"from-other","agent":{"symbol":"O"}}}');
   });
 
+  const mainPort = (): number => Number(new URL(base).port);
   /** Redirects `n` times on the same origin (to /proxy/register?hop=k), then answers. */
   const chain = (n: number, status = 307) => (req: http.IncomingMessage, res: http.ServerResponse) => {
     const hop = Number(new URL(req.url ?? "/", "http://x").searchParams.get("hop") ?? "0");
@@ -238,23 +240,40 @@ describe("redirects, as Go's http.Client follows them", () => {
     }
     json(201, `{"data":{"token":"hop-${String(hop)}","agent":{"symbol":"S"}}}`)(req, res);
   };
-  const register = () => spaceTradersClient({ baseUrl: base }).register("account-token-1", "S", "F", "");
+  /** The first request to /proxy/register is redirected to `location`; anything else on this origin answers "stayed". */
+  const once = (location: string, status = 307) => (req: http.IncomingMessage, res: http.ServerResponse) => {
+    if (req.url === "/proxy/register") {
+      res.writeHead(status, { location });
+      res.end();
+      return;
+    }
+    json(201, '{"data":{"token":"stayed","agent":{"symbol":"S"}}}')(req, res);
+  };
+  const register = () => spaceTradersClient({ baseUrl: base }).register("account-token-1", "S", "F", "pilot@example.com");
+  const outcome = async (): Promise<string> => {
+    try {
+      return (await register()).agentToken;
+    } catch (err) {
+      return describeError(err);
+    }
+  };
 
   it("follows a 307 on the same origin with the method, the body and the account token", async () => {
     reply = chain(1);
     expect((await register()).agentToken).toBe("hop-1");
     expect(seen.map((c) => [c.method, c.url, c.headers.authorization, c.body.toString()])).toEqual([
-      ["POST", "/proxy/register", "Bearer account-token-1", '{"symbol":"S","faction":"F"}'],
-      ["POST", "/proxy/register?hop=1", "Bearer account-token-1", '{"symbol":"S","faction":"F"}'],
+      ["POST", "/proxy/register", "Bearer account-token-1", '{"symbol":"S","faction":"F","email":"pilot@example.com"}'],
+      ["POST", "/proxy/register?hop=1", "Bearer account-token-1", '{"symbol":"S","faction":"F","email":"pilot@example.com"}'],
     ]);
   });
 
-  it.each([301, 302, 303])("turns a POST into a GET without a body on a %i", async (status) => {
+  it.each([301, 302, 303])("turns a POST into a GET without a body on a %i, keeping Content-Type as Go does", async (status) => {
     reply = chain(1, status);
     await register();
     expect(seen[1]).toMatchObject({ method: "GET", url: "/proxy/register?hop=1" });
     expect(seen[1]?.body.length).toBe(0);
-    expect(seen[1]?.headers["content-type"]).toBeUndefined();
+    expect(seen[1]?.headers["content-type"]).toBe("application/json");
+    expect(seen[1]?.headers.authorization).toBe("Bearer account-token-1");
   });
 
   it("follows 9 redirects and refuses the 10th, as Go's 'stopped after 10 redirects'", async () => {
@@ -262,38 +281,130 @@ describe("redirects, as Go's http.Client follows them", () => {
     expect((await register()).agentToken).toBe("hop-9");
     seen = [];
     reply = chain(10);
-    const err = await register().catch((e: unknown) => e);
-    expect(err).toBeInstanceOf(TransportError);
-    expect(describeError(err)).toBe("POST /register: stopped after 10 redirects");
+    expect(await outcome()).toBe("POST /register: stopped after 10 redirects");
     expect(seen).toHaveLength(10);
     expect(MAX_REDIRECTS).toBe(10);
   });
 
-  it("never sends the account token to another origin, another port on the same host included", async () => {
-    reply = (_req, res) => {
-      res.writeHead(307, { location: `${otherBase}/capture` });
+  it("reads an unparseable 10th Location as unparseable first, as Go orders the two checks", async () => {
+    reply = (req, res) => {
+      const hop = Number(new URL(req.url ?? "/", "http://x").searchParams.get("hop") ?? "0");
+      res.writeHead(307, { location: hop < 9 ? `/proxy/register?hop=${String(hop + 1)}` : "http:/no-host" });
       res.end();
     };
-    expect((await register()).agentToken).toBe("from-other");
-    expect(otherSeen).toHaveLength(1);
-    expect(otherSeen[0]?.headers.authorization).toBeUndefined();
-    expect(otherSeen[0]?.body.toString()).toBe('{"symbol":"S","faction":"F"}');
+    expect(await outcome()).toBe("POST /register: failed to parse Location header");
   });
 
-  it("answers with a 307 that has no Location, and refuses a 302 without one or a redirect to another scheme", async () => {
-    reply = json(307, '{"data":{"token":"no-location"}}');
+  it.each([301, 302, 303, 307, 308])("takes a %i without a Location as the answer, as Go does", async (status) => {
+    reply = json(status, '{"data":{"token":"no-location","agent":{"symbol":"N"}}}');
     expect((await register()).agentToken).toBe("no-location");
+    expect(seen).toHaveLength(1);
+  });
+
+  it("reads a 3xx without a Location and with an empty body as Go does: a decode error", async () => {
     reply = (_req, res) => {
       res.writeHead(302);
       res.end();
     };
-    expect(describeError(await register().catch((e: unknown) => e))).toBe("POST /register: 302 response missing Location header");
-    for (const location of ["file:///etc/passwd", "data:application/json,{}"]) {
-      reply = (_req, res) => {
-        res.writeHead(307, { location });
+    const err = await register().catch((e: unknown) => e);
+    expect(err).toBeInstanceOf(GoJsonError);
+    expect(describeError(err)).toBe("unexpected end of JSON input");
+  });
+
+  it("never sends the account token or the register body to another host, another port of the same host included", async () => {
+    reply = once(`http://127.0.0.1:${String(otherPort)}/capture`);
+    expect(await outcome()).toBe("POST /register: refusing to send the request body to another host");
+    expect(otherSeen).toEqual([]);
+    // A 302 drops the body: the GET that follows it goes there, without the account token.
+    reply = once(`http://127.0.0.1:${String(otherPort)}/capture`, 302);
+    expect(await outcome()).toBe("from-other");
+    expect(otherSeen.map((c) => [c.method, c.headers.authorization, c.body.length])).toEqual([["GET", undefined, 0]]);
+  });
+
+  it("keeps the account token off for the rest of the chain once a hop has left the host, also back on it", async () => {
+    reply = (req, res) => {
+      if (req.url === "/proxy/register") {
+        res.writeHead(302, { location: `http://127.0.0.1:${String(otherPort)}/back` });
         res.end();
-      };
-      expect(describeError(await register().catch((e: unknown) => e))).toBe("POST /register: unsupported protocol scheme in a redirect");
-    }
+        return;
+      }
+      json(201, '{"data":{"token":"back-on-A","agent":{"symbol":"S"}}}')(req, res);
+    };
+    otherReply = (_req, res) => {
+      res.writeHead(307, { location: `http://127.0.0.1:${String(mainPort())}/proxy/register?hop=back` });
+      res.end();
+    };
+    expect(await outcome()).toBe("back-on-A");
+    expect(seen.map((c) => [c.url, c.headers.authorization])).toEqual([
+      ["/proxy/register", "Bearer account-token-1"],
+      ["/proxy/register?hop=back", undefined],
+    ]);
+  });
+
+  // Each of these is read differently by WHATWG URL and by Go; with Go's reading they stay on this origin or are
+  // refused, and the other listener (the host:port they name) never hears from the service.
+  it.each([
+    ["///127.0.0.1:O/x", "stayed"],
+    ["////127.0.0.1:O/x", "stayed"],
+    ["/\\127.0.0.1:O/x", "stayed"],
+    ["\\\\127.0.0.1:O/x", "POST /register: failed to parse Location header"],
+    ["http:\\\\127.0.0.1:O/x", "POST /register: failed to parse Location header"],
+    ["http://127.0.0.1\t:O/x", "POST /register: failed to parse Location header"],
+    ["http://127.0.0.1:O\\@127.0.0.1:A/x", "POST /register: failed to parse Location header"],
+    ["http://127.0.0.1:A@127.0.0.1:O/x", "POST /register: failed to parse Location header"],
+    ["http:/127.0.0.1:O/x", "POST /register: failed to parse Location header"],
+    ["http:127.0.0.1:O/x", "POST /register: failed to parse Location header"],
+    ["https:/127.0.0.1:O/x", "POST /register: failed to parse Location header"],
+    ["file:///etc/passwd", "POST /register: failed to parse Location header"],
+    ["data:application/json,{}", "POST /register: failed to parse Location header"],
+  ])("Location %j", async (template, expected) => {
+    const location = template.replaceAll(":O", `:${String(otherPort)}`).replaceAll(":A", `:${String(mainPort())}`);
+    reply = once(location);
+    expect(await outcome()).toBe(expected);
+    expect(otherSeen).toEqual([]);
+    for (const c of seen.slice(1)) expect(c.url.startsWith("/")).toBe(true);
+  });
+});
+
+describe("where the account token goes, decided on the hosts as written", () => {
+  /** A fetch that answers from a script and records what each hop carried. */
+  function scripted(hops: [number, string][]): { fetch: typeof fetch; calls: { url: string; authorization: string | undefined }[] } {
+    const calls: { url: string; authorization: string | undefined }[] = [];
+    const impl = (url: string | URL | Request, init?: RequestInit): Promise<Response> => {
+      const headers = (init?.headers ?? {}) as Record<string, string>;
+      calls.push({ url: url instanceof URL ? url.href : typeof url === "string" ? url : url.url, authorization: headers.Authorization });
+      const hop = hops[calls.length - 1];
+      return Promise.resolve(
+        hop === undefined
+          ? new Response('{"data":{"token":"t","agent":{"symbol":"S"}}}', { status: 201 })
+          : new Response(null, { status: hop[0], headers: { Location: hop[1] } }),
+      );
+    };
+    return { fetch: impl, calls };
+  }
+
+  it("strips it on an https-to-http downgrade, on the same host", async () => {
+    const s = scripted([[307, "http://gw.example/proxy/register?hop=1"]]);
+    await spaceTradersClient({ baseUrl: "https://gw.example/proxy", fetch: s.fetch }).register("acct", "S", "F", "");
+    expect(s.calls.map((c) => c.authorization)).toEqual(["Bearer acct", undefined]);
+  });
+
+  it("compares the host byte for byte, as Go does: another spelling of the same name loses it", async () => {
+    const s = scripted([[302, "http://GW.example/proxy/register?hop=1"]]);
+    await spaceTradersClient({ baseUrl: "http://gw.example/proxy", fetch: s.fetch }).register("acct", "S", "F", "");
+    expect(s.calls.map((c) => c.authorization)).toEqual(["Bearer acct", undefined]);
+  });
+
+  it("keeps it on the very same host", async () => {
+    const s = scripted([[307, "http://gw.example/proxy/register?hop=1"]]);
+    await spaceTradersClient({ baseUrl: "http://gw.example/proxy", fetch: s.fetch }).register("acct", "S", "F", "");
+    expect(s.calls.map((c) => c.authorization)).toEqual(["Bearer acct", "Bearer acct"]);
+  });
+
+  it("refuses an ST_GATEWAY_URL that is no usable URL, sending nothing", async () => {
+    const s = scripted([]);
+    const err = await spaceTradersClient({ baseUrl: "http:/no-host/proxy", fetch: s.fetch }).getRoot().catch((e: unknown) => e);
+    expect(describeError(err)).toBe("GET /: ST_GATEWAY_URL is not a usable URL");
+    expect(s.calls).toEqual([]);
   });
 });

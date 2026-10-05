@@ -13,6 +13,7 @@
  */
 import { isZeroTime, parseDateOnly, parseRfc3339, type GoTime } from "../goTime";
 import { GoJsonError, unmarshal } from "../goJson";
+import { fromHeaderValue, resolveReference } from "./location";
 
 /** The bound on one upstream exchange, body included. */
 export const UPSTREAM_TIMEOUT_MS = 30_000;
@@ -36,7 +37,7 @@ export class UpstreamError extends Error {
 /** How many redirects Go's default CheckRedirect follows: the 10th redirect is refused ("stopped after 10 redirects"). */
 export const MAX_REDIRECTS = 10;
 
-/** A redirect Go's client would refuse to follow. Its message names no URL. */
+/** A request or redirect Go's client would refuse to make. Its message names no URL. */
 class RedirectError extends Error {
   constructor(message: string) {
     super(message);
@@ -114,42 +115,51 @@ export function spaceTradersClient(options: ClientOptions): SpaceTradersClient {
   const doFetch = options.fetch ?? fetch;
 
   /**
-   * The request, following redirects as Go 1.22's http.Client does: 301, 302 and 303 turn any method but GET and HEAD
-   * into a GET without a body, 307 and 308 repeat the method and the body; a 307 or 308 without a Location is the
-   * answer, a 301, 302 or 303 without one is an error; only http and https are followed; the 10th redirect is refused.
-   * `Authorization` (the account token) is sent only to the origin the call started at: Go also sends it to another
-   * port on the same host and to a subdomain, which this does not (stricter). No Referer is added.
+   * The request, following redirects as Go 1.22's http.Client does (net/http client.go):
+   *  - 301, 302, 303, 307 and 308 WITH a Location are followed; without one the response is the answer, as it stands
+   *    (Go returns it: a 3xx is read like a 2xx by the callers);
+   *  - 301, 302 and 303 turn any method but GET and HEAD into a GET without a body; Content-Type stays (Go copies every
+   *    header to the next request); 307 and 308 repeat the method and the body;
+   *  - the Location is read with Go's url.Parse and ResolveReference rules (`location.ts`, from agent-service), never
+   *    by WHATWG `new URL(location, base)`: `///h`, `/\\h`, `http:\\\\h`, a tab in a host, `http://a\\@b` and the like stay
+   *    on the origin or are refused as Go refuses them; userinfo, a scheme without a host and anything but http(s)
+   *    are refused (`failed to parse Location header`, checked before the redirect count, as Go orders them);
+   *  - the 10th redirect is refused (`stopped after 10 redirects`).
+   * `Authorization` (the account token) goes only to the host the call started at, byte for byte as Go compares it and
+   * as the URL actually fetched says, never over an https-to-http downgrade, and once a hop has left the host it stays
+   * off for the rest of the chain, also if a later hop comes back. Stricter than Go, which also sends it to another
+   * port of the same host and to a subdomain. A request body is never sent to another host either: a 307 or 308 that
+   * would carry it there is refused. No Referer is added.
    */
   async function follow(start: string, init: { method: string; headers: Record<string, string>; body?: string }, signal: AbortSignal): Promise<Response> {
-    let url = new URL(start);
-    const origin = url.origin;
+    const first = resolveReference(null, start);
+    if (first === null) throw new RedirectError("ST_GATEWAY_URL is not a usable URL");
+    let target = first;
     let method = init.method;
     let body = init.body;
-    for (let redirects = 0; ; redirects++) {
+    let stripped = false;
+    for (let requests = 1; ; requests++) {
       const headers = { ...init.headers };
-      if (url.origin !== origin) delete headers.Authorization;
-      if (body === undefined) delete headers["Content-Type"];
-      const res = await doFetch(url.href, { method, headers, ...(body === undefined ? {} : { body }), redirect: "manual", signal });
-      if (!REDIRECT_STATUSES.has(res.status)) return res;
-      const location = res.headers.get("location") ?? "";
-      if (location === "" && (res.status === 307 || res.status === 308)) return res;
-      await res.body?.cancel();
-      if (location === "") throw new RedirectError(`${String(res.status)} response missing Location header`);
-      if (redirects + 1 >= MAX_REDIRECTS) throw new RedirectError(`stopped after ${String(MAX_REDIRECTS)} redirects`);
-      let next: URL;
-      try {
-        next = new URL(location, url);
-      } catch {
-        throw new RedirectError("failed to parse Location header");
-      }
-      if (next.protocol !== "http:" && next.protocol !== "https:") throw new RedirectError("unsupported protocol scheme in a redirect");
-      if (res.status <= 303 && method !== "GET" && method !== "HEAD") {
-        method = "GET";
-        body = undefined;
-      } else if (res.status <= 303) {
+      if (stripped) delete headers.Authorization;
+      const res = await doFetch(target.url, { method, headers, ...(body === undefined ? {} : { body }), redirect: "manual", signal });
+      // fetch joins repeated Location headers with ", "; Go reads the first.
+      const location = (res.headers.get("location") ?? "").split(", ", 1)[0] ?? "";
+      if (!REDIRECT_STATUSES.has(res.status) || location === "") return res;
+      await res.body?.cancel().catch(() => undefined);
+      const next = resolveReference(target, fromHeaderValue(location));
+      if (next === null) throw new RedirectError("failed to parse Location header");
+      if (requests >= MAX_REDIRECTS) throw new RedirectError(`stopped after ${String(MAX_REDIRECTS)} redirects`);
+      const sameHost = next.host === first.host && next.url.host === first.url.host;
+      // Another scheme is another origin: an https-to-http downgrade loses the token, whatever host it names.
+      if (!sameHost || next.url.protocol !== first.url.protocol) stripped = true;
+      if (res.status <= 303) {
+        if (method !== "GET" && method !== "HEAD") method = "GET";
         body = undefined;
       }
-      url = next;
+      // Stricter than Go: a body (the register call: call sign, faction, email) never leaves the host either. A 307 or
+      // 308 that would carry it elsewhere is refused (a 502), where Go would resend it without Authorization.
+      if (body !== undefined && !sameHost) throw new RedirectError("refusing to send the request body to another host");
+      target = next;
     }
   }
 

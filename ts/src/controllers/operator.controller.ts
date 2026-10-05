@@ -64,7 +64,7 @@ export class OperatorController extends Controller {
   ): Promise<Restored | SessionRefusal> {
     const refused = await sessionGate(request, introspectionOf(request).verifier, nowOf(request), SCOPE_AGENT_RESET);
     if (refused !== null) return this.refuse(refused.status, refused.message);
-    return restoreToken(request, vaultOf(request), nowOf(request));
+    return restoreToken(request, vaultOf(request), () => nowOf(request));
   }
 
   /**

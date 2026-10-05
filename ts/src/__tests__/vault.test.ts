@@ -64,6 +64,8 @@ interface World {
   poller: Poller;
   logs: string[];
   monotonic: { now: number };
+  /** The app's wall clock (the poller keeps NOW). */
+  clock: { now: number };
 }
 
 const pollers: Poller[] = [];
@@ -79,6 +81,7 @@ function world(row: typeof REGISTERED | null = REGISTERED): World {
   const logs: string[] = [];
   const log = (line: string): void => void logs.push(line);
   const monotonic = { now: 0 };
+  const clock = { now: NOW };
   const poller = new Poller({ store, upstream, log, now: () => NOW, monotonic: () => monotonic.now });
   pollers.push(poller);
   const vault: VaultDeps = { sharedSecret: SHARED, store, poller, log };
@@ -86,9 +89,10 @@ function world(row: typeof REGISTERED | null = REGISTERED): World {
     store,
     log,
     vault,
+    now: () => clock.now,
     introspection: { secret: INTROSPECTION, verifier: createVerifier({ key: createPublicKey(key), issuer: "" }) },
   });
-  return { app, db, store, upstream, poller, logs, monotonic };
+  return { app, db, store, upstream, poller, logs, monotonic, clock };
 }
 
 async function waitFor(condition: () => boolean): Promise<void> {
@@ -610,5 +614,68 @@ describe("a body nested deeper than Go reads", () => {
       expectText(await post("[".repeat(depth)), 400, "invalid request body: invalid character '[' exceeded max depth\n");
     }
     expect(w.logs.filter((l) => /RangeError|at /.test(l))).toEqual([]);
+  });
+});
+
+describe("an operator write queued behind a poll", () => {
+  /** Sends a request on a raw socket and destroys the socket once the request is out. */
+  async function sendAndHangUp(w: World, path: string, body: string): Promise<() => void> {
+    const server = createHttpServer(w.app);
+    await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
+    const socket = net.connect((server.address() as AddressInfo).port, "127.0.0.1");
+    await new Promise<void>((resolve) => socket.once("connect", resolve));
+    socket.write(`POST ${path} HTTP/1.1\r\nHost: x\r\nAuthorization: Bearer ${jwt()}\r\nContent-Length: ${String(Buffer.byteLength(body))}\r\n\r\n${body}`);
+    return () => {
+      socket.destroy();
+      server.close();
+    };
+  }
+  const history = (w: World): string[] => (w.db.prepare("SELECT event FROM registration_history").all() as { event: string }[]).map((r) => r.event);
+
+  it("is not written when its caller hung up while it waited: Restore Token", async () => {
+    const w = world();
+    const slow = deferred<RootInfo>();
+    w.upstream.root = () => slow.promise;
+    const poll = w.poller.tick(false);
+    const hangUp = await sendAndHangUp(w, "/api/auth/v1/agent-token", '{"agentToken":"never-stored"}');
+    await new Promise((r) => setTimeout(r, 100));
+    hangUp();
+    await new Promise((r) => setTimeout(r, 50));
+    slow.resolve(rootOf("2026-09-01", "2099-01-01T00:00:00Z"));
+    await poll;
+    await w.poller.tick(false);
+    expect(getCredential(w.db)?.agentToken).toBe("agent-token-sentinel");
+    expect(history(w)).toEqual([]);
+  });
+
+  it("is not sent upstream nor written when its caller hung up while it waited: Reset Agent", async () => {
+    const w = world();
+    const slow = deferred<RootInfo>();
+    w.upstream.root = () => slow.promise;
+    const poll = w.poller.tick(false);
+    const hangUp = await sendAndHangUp(w, "/api/auth/v1/register", '{"accountToken":"never","symbol":"S","faction":"F"}');
+    await new Promise((r) => setTimeout(r, 100));
+    hangUp();
+    await new Promise((r) => setTimeout(r, 50));
+    slow.resolve(rootOf("2026-09-01", "2099-01-01T00:00:00Z"));
+    await poll;
+    await w.poller.tick(false);
+    expect(w.upstream.registerCalls).toEqual([]);
+    expect(getCredential(w.db)?.accountToken).toBe("account-token-sentinel");
+  });
+
+  it("is stamped with the time it is written, not the time it arrived", async () => {
+    const w = world();
+    const slow = deferred<RootInfo>();
+    w.upstream.root = () => slow.promise;
+    const poll = w.poller.tick(false);
+    const restore = request(w.app).post("/api/auth/v1/agent-token").set("Authorization", `Bearer ${jwt()}`).send('{"agentToken":"later"}').then((r) => r);
+    await new Promise((r) => setTimeout(r, 100));
+    w.clock.now = NOW + 90_000;
+    slow.resolve(rootOf("2026-09-01", "2099-01-01T00:00:00Z"));
+    await poll;
+    expect((await restore).status).toBe(200);
+    expect(w.db.prepare("SELECT updated_at FROM credential").get()).toEqual({ updated_at: "2026-10-04T12:01:30Z" });
+    expect(w.db.prepare("SELECT occurred_at FROM registration_history").all()).toEqual([{ occurred_at: "2026-10-04T12:01:30Z" }]);
   });
 });

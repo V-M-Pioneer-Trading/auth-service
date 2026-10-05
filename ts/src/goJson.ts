@@ -70,7 +70,23 @@ class Truncated extends Error {}
 
 class Parser {
   private i = 0;
-  constructor(private readonly b: Buffer) {}
+  /**
+   * `eofIsSpace`: Unmarshal's end of input. Go's scanner then feeds one more byte, a space, so input that ends inside a
+   * literal or a number is a syntax error about that space (`invalid character ' ' in exponent of numeric literal`), and
+   * only input that ends elsewhere is "unexpected end of JSON input". A Decoder reports any early end as "unexpected EOF".
+   */
+  constructor(
+    private readonly b: Buffer,
+    private readonly eofIsSpace = false,
+  ) {}
+
+  /** The next byte inside a literal or a number, where the end of input reads as a space under Unmarshal. */
+  private needIn(context: string): number {
+    const c = this.b[this.i];
+    if (c !== undefined) return c;
+    if (this.eofIsSpace) this.fail(0x20, context);
+    throw new Truncated();
+  }
 
   get position(): number {
     return this.i;
@@ -180,8 +196,9 @@ class Parser {
   private literal(word: string, v: Value): Value {
     this.i++;
     for (let k = 1; k < word.length; k++) {
-      const c = this.need();
-      if (c !== word.charCodeAt(k)) this.fail(c, `in literal ${word} (expecting ${quoteChar(word.charCodeAt(k))})`);
+      const context = `in literal ${word} (expecting ${quoteChar(word.charCodeAt(k))})`;
+      const c = this.needIn(context);
+      if (c !== word.charCodeAt(k)) this.fail(c, context);
       this.i++;
     }
     return v;
@@ -191,21 +208,21 @@ class Parser {
     const start = this.i;
     if (this.peek() === 0x2d) {
       this.i++;
-      const c = this.need();
+      const c = this.needIn("in numeric literal");
       if (!isDigit(c)) this.fail(c, "in numeric literal");
     }
     if (this.peek() === 0x30) this.i++;
     else while (isDigit(this.peek())) this.i++;
     if (this.peek() === 0x2e) {
       this.i++;
-      const c = this.need();
+      const c = this.needIn("after decimal point in numeric literal");
       if (!isDigit(c)) this.fail(c, "after decimal point in numeric literal");
       while (isDigit(this.peek())) this.i++;
     }
     if (this.peek() === 0x65 || this.peek() === 0x45) {
       this.i++;
       if (this.peek() === 0x2b || this.peek() === 0x2d) this.i++;
-      const c = this.need();
+      const c = this.needIn("in exponent of numeric literal");
       if (!isDigit(c)) this.fail(c, "in exponent of numeric literal");
       while (isDigit(this.peek())) this.i++;
     }
@@ -295,7 +312,7 @@ function decoderValue(body: Buffer): Value {
 
 /** `json.Unmarshal(data, &v)`'s read: exactly one value. */
 function unmarshalValue(data: Buffer): Value {
-  const p = new Parser(data);
+  const p = new Parser(data, true);
   let v: Value;
   try {
     v = p.value();
@@ -350,6 +367,19 @@ const MAX_INT64 = 2n ** 63n - 1n;
 const typeOf = (v: Value): string => (v.kind === "bool" ? "bool" : v.kind);
 
 /**
+ * The Go type of an anonymous struct of `shape`, as reflect prints it in an UnmarshalTypeError: each field is the JSON
+ * name capitalised (how the Go service's types name them), its type, and its tag quoted
+ * (`struct { Next string "json:\"next\""; Frequency string "json:\"frequency\"" }`).
+ */
+function goStructType(shape: Shape): string {
+  const fields = Object.entries(shape).map(([name, type]) => {
+    const goType = type === "string" ? "string" : type === "int" ? "int" : goStructType(type);
+    return `${name.charAt(0).toUpperCase()}${name.slice(1)} ${goType} ${JSON.stringify(`json:"${name}"`)}`;
+  });
+  return `struct { ${fields.join("; ")} }`;
+}
+
+/**
  * Decodes `v` into a struct of `shape`, filling `into`; returns the first type error (Go's saveError) or null.
  * The wording is Go 1.22's UnmarshalTypeError: "Go value of type <package.Type>" for the whole value, and for a field
  * "Go struct field <S>.<path from the top>", where <S> is the name of the struct the field is in (empty for the
@@ -377,7 +407,7 @@ function fill(v: Value, shape: Shape, into: Record<string, unknown>, path: strin
       if (n !== null && n >= MIN_INT64 && n <= MAX_INT64) into[name] = n;
       else error = field(value.kind === "number" ? `number ${value.text}` : typeOf(value), "int");
     } else if (value.kind !== "object") {
-      error = field(typeOf(value), "struct");
+      error = field(typeOf(value), goStructType(type));
     } else {
       error = fill(value, type, into[name] as Record<string, unknown>, where, "");
     }
