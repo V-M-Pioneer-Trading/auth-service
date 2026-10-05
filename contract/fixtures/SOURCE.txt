@@ -2,8 +2,8 @@ introspection.json in this directory is a VERBATIM copy. Do not edit it here.
 
   original: meta/fixtures/introspection.json
             (V-M-Pioneer-Trading/meta, repo root `fixtures/introspection.json`)
-  meta commit: 993fea9eb1c38de03b9bea14d6e03d8b450750cc (2026-10-03, fixture version 6)
-  sha256: 90562110d24e47bfdcbf7ff05f1112b4bc840835bf728fa7f6bd81ff67bbeb9c
+  meta commit: f226e5f49b59d094a83a07fbb2f3caf3149a8d66 (2026-10-05, fixture version 7)
+  sha256: 95cb78d820dd3eb65f93eb91c379fac152924f1fa9b799bf01603c8f162cda2b
 
 The sha256 above is the hash of the LF bytes of introspection.json and is
 asserted by contract/tests/introspect-fixture.test.ts and by
@@ -23,10 +23,17 @@ content type, body template, secret header, env var names) and every `center`
 object inside a case — those are this service's own output. See
 src/__tests__/introspectionFixture.test.ts and contract/tests/introspect-fixture.test.ts, which drive the center through all of them.
 
-The meta commit above is the head of meta pull request #107, "Fixture v6: what
-separates scopes, and top-level keys ignoring case", merged with a merge
-commit so it lands on meta's main unchanged. Version 6's scope-separator
-cases are active answers the center produces verbatim; its key-case cases are
-not producible (the center marshals a struct) and are checked through their
-well-formed twin. The same version moved this service's own agent:reset gate
-from strings.Fields to the clients' split: runs of space, tab, CR and LF.
+The meta commit above is the head of meta pull request #108, "Fixture v7: a
+non-2xx answer is unavailable whatever its body says", merged with a merge
+commit so it lands on meta's main unchanged. Version 7's ten cases have the
+center answer 500, 401, 302, 503 or 404 with a valid active body. The center
+never sends an active body with a non-2xx, so both fixture tests classify them
+as client-only; a 401 is the center's own (callerSecret) only when its body is
+not an active answer. Totals: notCalled 21, active 24, activeNoScopeKey 3,
+inactive 4, callerSecret 2, ambiguousKeys 5, clientOnly 16 = 75.
+
+Version 6 (meta #107, commit 993fea9): its scope-separator cases are active
+answers the center produces verbatim; its key-case cases are not producible
+(the center marshals a struct) and are checked through their well-formed twin.
+The same version moved this service's own agent:reset gate from
+strings.Fields to the clients' split: runs of space, tab, CR and LF.

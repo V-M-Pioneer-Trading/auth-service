@@ -71,7 +71,7 @@ prints one.
 
 | File | What it pins |
 | --- | --- |
-| `tests/introspect-fixture.test.ts` | the SHA-256 pin of `contract/fixtures/introspection.json`, then **every** one of its 65 cases driven through the container, with the classification totals asserted |
+| `tests/introspect-fixture.test.ts` | the SHA-256 pin of `contract/fixtures/introspection.json`, then **every** one of its 75 cases driven through the container, with the classification totals asserted |
 | `tests/introspect.test.ts` | caller-secret gate, where the token travels, the 8 KiB cap, what verifies and what is `{"active":false}`, `CLERK_ISSUER` |
 | `tests/vault.test.ts` | `GET /auth/v1/token`, both status routes, health routes, the Clerk session gate, Restore Token |
 | `tests/register.test.ts` | Reset Agent: what is sent to SpaceTraders, what is stored, how upstream failures map |

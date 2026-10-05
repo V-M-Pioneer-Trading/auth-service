@@ -35,21 +35,33 @@ describe("the vendored fixture is the copy it claims to be", () => {
       "contract/fixtures/introspection.json drifted from meta: re-copy it and update SOURCE.txt (and check .gitattributes still marks it -text)",
     );
   });
-  it("is version 6 with 51 + 14 cases", () => {
-    assert.equal(fixture.version, 6);
-    assert.equal(fixture.cases.length, 51);
-    assert.equal(fixture.gatewayCases.length, 14);
+  it("is version 7 with 56 + 19 cases", () => {
+    assert.equal(fixture.version, 7);
+    assert.equal(fixture.cases.length, 56);
+    assert.equal(fixture.gatewayCases.length, 19);
   });
 });
 
 type Class = "notCalled" | "active" | "activeNoScopeKey" | "inactive" | "callerSecret" | "ambiguousKeys" | "clientOnly";
 
+function isActiveBody(body: string | undefined): boolean {
+  try {
+    return (JSON.parse(body ?? "") as { active?: unknown }).active === true;
+  } catch {
+    return false;
+  }
+}
+
 function classify(c: FixtureCase): Class {
   const k = c.center;
   if (k.notCalled) return "notCalled";
   if (k.transport || (k.delayMs ?? 0) > 0) return "clientOnly";
-  if (k.status === 401) return "callerSecret";
-  if (k.status !== 200) return "clientOnly";
+  if (k.status !== 200) {
+    // A non-2xx carrying an active answer (version 7) is client-side: the center never sends one, and a client must
+    // answer 503 without reading it. Only the center's own 401 about our secret is the center's to produce.
+    if (k.status === 401 && !isActiveBody(k.body)) return "callerSecret";
+    return "clientOnly";
+  }
   let doc: Record<string, unknown>;
   try {
     doc = JSON.parse(k.body ?? "") as Record<string, unknown>;
@@ -153,7 +165,7 @@ describe("every fixture case, answered by the center", () => {
       inactive: 4,
       callerSecret: 2,
       ambiguousKeys: 5, // v5: a repeated sub (x2); v6: Active, Scope, Kind
-      clientOnly: 6, // transport failures, a 500, an HTML body
+      clientOnly: 16, // transport failures, a 500, an HTML body; v7: five non-2xx with an active body, x2
     });
   });
 
