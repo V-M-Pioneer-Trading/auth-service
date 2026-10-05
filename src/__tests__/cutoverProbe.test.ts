@@ -2,6 +2,7 @@ import { execFile } from "node:child_process";
 import http from "node:http";
 import type { AddressInfo } from "node:net";
 import path from "node:path";
+import { pathToFileURL } from "node:url";
 
 // scripts/cutover-probe.mjs against a stub that plays the public domain. It pins what matters about a probe that runs
 // against production with real session tokens: it passes against a correct service, it fails when the service
@@ -24,7 +25,8 @@ type Quirk =
   | "status-leaks"
   | "other-symbol"
   | "no-cycle"
-  | "shadow-cycle"
+  | "live-cycle"
+  | "stale-cycle"
   | "disarmed"
   | "scope-lost";
 
@@ -77,10 +79,11 @@ function stub(quirk: Quirk, seen: Seen): Promise<http.Server> {
       if (quirk === "scope-lost") return refused(403, "missing scope");
       return quirk === "validation-skipped" ? { status: 201, body: {} } : refused(400, "shipType is required");
     }
-    if (p === "/api/automation/v1/autopilot/status") return ok({ status: quirk === "disarmed" ? "disarmed" : "armed", mode: quirk === "shadow-cycle" ? "shadow" : "live" });
+    if (p === "/api/automation/v1/autopilot/status") return ok({ status: quirk === "disarmed" ? "disarmed" : "armed", mode: quirk === "live-cycle" ? "live" : "shadow" });
     if (p === "/api/automation/v1/autopilot/events") {
-      const type = quirk === "no-cycle" ? "planner_assignment" : quirk === "shadow-cycle" ? "planner_shadow_assignment" : "agent_credits_snapshot";
-      return ok({ events: [{ type, occurredAt: new Date().toISOString(), detail: { secret: OPERATOR } }] });
+      const type = quirk === "no-cycle" ? "planner_assignment" : quirk === "live-cycle" ? "agent_credits_snapshot" : "planner_shadow_assignment";
+      const at = quirk === "stale-cycle" ? Date.now() - 3_600_000 : Date.now();
+      return ok({ events: [{ type, occurredAt: new Date(at).toISOString(), detail: { secret: OPERATOR } }] });
     }
     if (p === "/api/automation/v1/events") return who === "operator" ? refused(403, "no events:write") : refuse();
     if (p.startsWith("/api/fleet/v1/")) return who === "none" || who === "bad" ? refuse() : refused(404, "no such ship");
@@ -210,21 +213,48 @@ describe("scripts/cutover-probe.mjs", () => {
     expect((await probe(env, ["--allow-skip=NOPE"])).code).toBe(2);
   });
 
-  it("accepts planner_shadow_assignment as the proof of a shadow-mode cycle, and fails on neither event", async () => {
-    const shadow = await serve("shadow-cycle");
+  it("HARD GATE: needs a planner_shadow_assignment at or after SINCE, and nothing else (live snapshot, stale, other events) will do", async () => {
+    const shadow = await serve("none");
     const ok = await probe(full(shadow.base), ["--strict"]);
     expect(ok.code).toBe(0);
     expect(ok.out).toContain("armed (shadow)");
-    const none = await serve("no-cycle");
-    const bad = await probe(full(none.base));
-    expect(bad.code).toBe(1);
-    expect(bad.out).toContain("planner_shadow_assignment");
+    for (const quirk of ["no-cycle", "live-cycle", "stale-cycle"] as const) {
+      const bad = await probe(full((await serve(quirk)).base));
+      expect(bad.code).toBe(1);
+      expect(bad.out).toContain("planner_shadow_assignment");
+    }
   });
 
-  it("treats a disarmed autopilot as a skip that --strict only allows by name", async () => {
+  it("a disarmed autopilot fails the run (the mint path is unproven); it cannot be skipped", async () => {
     const { base } = await serve("disarmed");
-    expect((await probe(full(base), ["--strict"])).code).toBe(1);
-    expect((await probe(full(base), ["--strict", "--allow-skip=AUTOMATION_CYCLE"])).code).toBe(0);
+    const bad = await probe(full(base), ["--strict"]);
+    expect(bad.code).toBe(1);
+    expect(bad.out).toContain("arm it in SHADOW mode");
+    expect((await probe(full(base))).code).toBe(1);
+    expect((await probe(full(base), ["--strict", "--allow-skip=AUTOMATION_CYCLE"])).code).toBe(2);
+  });
+
+  it("the guard never lets OPERATOR_TOKEN near auth-service's own routes, however the path is spelled", async () => {
+    const check = (method: string, p: string, token: string | undefined): Promise<string> =>
+      new Promise((resolve) => {
+        const code = `import { checkRequest } from ${JSON.stringify(pathToFileURL(script).href)};
+          try { checkRequest(process.argv[1], process.argv[2], process.argv[3] || undefined, { operator: process.env.OP, noReset: process.env.NR, noResetSafe: true }); console.log("ALLOWED"); }
+          catch (e) { console.log("REFUSED " + e.message); }`;
+        execFile(process.execPath, ["--input-type=module", "-e", code, method, p, token ?? ""], { env: { PATH: process.env.PATH ?? "", OP: OPERATOR, NR: NO_RESET } }, (_e, out) => {
+          resolve(out.trim());
+        });
+      });
+    for (const p of ["/api/auth/v1/%72egister", "/api/auth/v1/register", "/api/auth/v1/agent-t%6fken", "/api/auth/v1/status", "/api/auth/health", "/auth/v1/token", "/api/agent/../auth/v1/register", "/api/agent/%2e%2e/auth/v1/status", "/api/agent%2Fv1/x", "/api/st-gateway/health"]) {
+      expect(await check("POST", p, OPERATOR)).toMatch(/^REFUSED/);
+    }
+    // the allowlisted prefixes still work, the refusal shapes of the reset routes still go out, spelled either way
+    expect(await check("GET", "/api/agent/v1/agent", OPERATOR)).toBe("ALLOWED");
+    expect(await check("GET", "/api/navigation/v1/waypoints/X1", OPERATOR)).toBe("ALLOWED");
+    expect(await check("POST", "/api/auth/v1/%72egister", undefined)).toBe("ALLOWED");
+    expect(await check("POST", "/api/auth/v1/%72egister", NO_RESET)).toBe("ALLOWED");
+    expect(await check("GET", "/api/agent/v1/agent", NO_RESET)).toMatch(/^REFUSED/);
+    // the secret-gated routes are never called, with any token or none, encoded or not
+    for (const p of ["/auth/v1/%74oken", "/api/auth/v1/m2m-token", "/auth/v1/introspect"]) expect(await check("POST", p, undefined)).toMatch(/^REFUSED/);
   });
 
   it("fails when an empty-body write is accepted, or when the operator's scope did not reach agent-service", async () => {

@@ -20,11 +20,14 @@
 //                         and refuses to send it if agent:reset is there. Without it the 403 case is SKIPPED.
 //   EXPECT_AGENT_SYMBOL   optional: the agent symbol GET /api/auth/v1/status showed BEFORE the cutover deploy (the deploy
 //                         script prints it). The check that the SQLite state survived: the same symbol after.
-//   SINCE                 ISO time. The automation check looks only at events at or after it. Set it to when the deploy
-//                         finished. Default: 20 minutes ago.
+//   SINCE                 ISO time. The automation check looks only at events at or after it. Set it to when
+//                         automation-service was RESTARTED after the rc deploy (cutover-deploy-rc.ps1 prints it), so the
+//                         event it requires comes from a token auth-service minted after the cutover, not from a 24 h token
+//                         Go minted before it. Default: 20 minutes ago.
 //
-// Flags: --dry-run, --strict, --allow-skip=NAME[,NAME], --help. NAME is one of NO_RESET_TOKEN, EXPECT_AGENT_SYMBOL,
-// AUTOMATION_CYCLE. Exit status: 0 every check passed (or was skipped without --strict), 1 a check failed, 2 bad usage.
+// Flags: --dry-run, --strict, --allow-skip=NAME[,NAME], --help. NAME is one of NO_RESET_TOKEN, EXPECT_AGENT_SYMBOL.
+// Exit status: 0 every check passed (or was skipped without --strict), 1 a check failed, 2 bad usage, 3 the probe crashed.
+// The automation cycle check is a HARD gate (it cannot be skipped): see "the mint path" below.
 //
 // Run it with --strict and name every skip you accept: a skipped check then counts as a failure unless you allowed it.
 //
@@ -53,6 +56,13 @@
 //     events:write is refused 403 before the handler; with it, the empty body is a 400).
 //   * the 503 with auth-service down is covered by the contract suite and is not probed.
 //
+// THE MINT PATH. automation-service caches its machine token for 24 h and refreshes it at 12 h, so a probe that runs while
+// it still holds a token Go minted proves nothing about the TypeScript mint. The procedure restarts automation-service
+// after the rc deploy (its cache is empty, its next call mints through POST /auth/v1/m2m-token), and the cycle check
+// requires a planner_shadow_assignment at or after SINCE (the restart): each one follows an M2M-authenticated read of
+// agent-service, i.e. a token this auth-service minted AND introspected active. The host checklist's hard gate adds the
+// mint count and the absence of any 401/403/503 in automation-service's log since the restart.
+//
 // NOT probed: ai-service (parked, not deployed; its M2M path is automation-service's, which the cycle check and the host
 // checklist cover).
 
@@ -65,20 +75,51 @@ const GARBAGE = "probe-garbage-not-a-token";
 const FORGED = "eyJhbGciOiJub25lIiwidHlwIjoiSldUIn0.eyJzdWIiOiJwcm9iZSIsInNjb3BlIjoiYWdlbnQ6cmVzZXQifQ.";
 const PROBE_ID = "PROBE-NOT-A-REAL-ID";
 const RESET_SCOPE = "agent:reset";
-// What a healthy automation cycle leaves in its public event log. agent_credits_snapshot is written only in live mode;
-// in shadow mode planner_shadow_assignment is the proof (each one follows an M2M-authenticated read of agent-service).
-const CYCLE_EVENTS = new Set(["agent_credits_snapshot", "planner_shadow_assignment"]);
+// What a healthy automation cycle leaves in its public event log. The autopilot runs armed in SHADOW mode for the cutover,
+// where planner_shadow_assignment is the proof (each one follows an M2M-authenticated read of agent-service).
+// agent_credits_snapshot is written only in live mode and is not what this probe waits for.
+const CYCLE_EVENT = "planner_shadow_assignment";
 // Event types that mean the cycle broke (the *_error types) or an action failed.
 const ERROR_TYPES = new Set(["mining_tick_error", "contract_discovery_error", "observation_write_error"]);
 const WARN_TYPES = new Set(["mining_task_failed"]);
 const STATES = new Set(["UNCONFIGURED", "HEALTHY", "WIPE_IMMINENT", "APP_TOKEN_EXPIRED"]);
 const STATUS_MEMBERS = new Set(["state", "agentSymbol", "resetDate", "nextPredictedReset"]);
-const ALLOWED_SKIPS = ["NO_RESET_TOKEN", "EXPECT_AGENT_SYMBOL", "AUTOMATION_CYCLE"];
+const ALLOWED_SKIPS = ["NO_RESET_TOKEN", "EXPECT_AGENT_SYMBOL"];
 
 // Paths this script never requests, whoever asks (see "WHAT IS NEVER DONE").
 const NEVER_CALLED = /\/auth\/v1\/(token|m2m-token|introspect)(?:[/?#]|$)/;
 // The two routes that reset the game account for a session holding agent:reset.
 const RESET_ROUTES = /^\/api\/auth\/v1\/(register|agent-token)(?:[?#]|$)/;
+
+// The operator's session is attached ONLY to the caller services' routes. Anything else (auth-service's own routes
+// included, whatever the spelling of the path) is refused before a request is built.
+const OPERATOR_PATHS = /^\/api\/(agent|fleet|automation|navigation)\//;
+
+/**
+ * The guards of "WHAT IS NEVER DONE", for one request, before it is built. Throws when it must not be sent. The path is
+ * checked as written AND percent-decoded, so `/api/auth/v1/%72egister` is the register route for every guard.
+ */
+export function checkRequest(method, path, token, { operator = "", noReset = "", noResetSafe = false } = {}) {
+  let decoded;
+  try {
+    decoded = decodeURIComponent(path);
+  } catch {
+    throw new Error(`refused: ${path} is not a decodable path`);
+  }
+  if (/(^|\/)\.\.(\/|\?|#|$)/.test(decoded)) throw new Error(`refused: ${path} has a dot-dot segment`);
+  if (NEVER_CALLED.test(path) || NEVER_CALLED.test(decoded)) throw new Error(`refused: ${path} is never called by this script`);
+  const reset = RESET_ROUTES.test(path) || RESET_ROUTES.test(decoded);
+  if (reset) {
+    if (method !== "POST" && method !== "OPTIONS") throw new Error(`refused: ${method} ${path}`);
+    if (token !== undefined && token !== GARBAGE && token !== FORGED && !(noReset !== "" && token === noReset && noResetSafe)) {
+      throw new Error(`refused: ${path} gets no session token but a verified agent:reset-less NO_RESET_TOKEN`);
+    }
+  }
+  if (operator !== "" && token === operator && !(OPERATOR_PATHS.test(path) && OPERATOR_PATHS.test(decoded))) {
+    throw new Error(`refused: OPERATOR_TOKEN is only ever sent to /api/(agent|fleet|automation|navigation)/ routes, not ${path}`);
+  }
+  if (noReset !== "" && token === noReset && !reset) throw new Error(`refused: NO_RESET_TOKEN is only ever sent to the reset routes, not ${path}`);
+}
 
 class Skip extends Error {
   constructor(message, name) {
@@ -174,13 +215,7 @@ export async function run(argv, env, write = (line) => process.stdout.write(line
   /** One request. Returns what the checks need; nothing here is printed except through a check's own line. */
   async function call(method, path, { token, rawAuth, body, origin } = {}) {
     // The guards of "WHAT IS NEVER DONE". They run before any request is built, for every caller of call().
-    if (NEVER_CALLED.test(path)) throw new Error(`refused: ${path} is never called by this script`);
-    if (RESET_ROUTES.test(path)) {
-      if (method !== "POST" && method !== "OPTIONS") throw new Error(`refused: ${method} ${path}`);
-      if (token !== undefined && token !== GARBAGE && token !== FORGED && !(noReset !== "" && token === noReset && noResetIsSafe())) {
-        throw new Error(`refused: ${path} gets no session token but a verified agent:reset-less NO_RESET_TOKEN`);
-      }
-    }
+    checkRequest(method, path, token, { operator, noReset, noResetSafe: noReset !== "" && noResetIsSafe() });
     const headers = { Accept: "application/json" };
     if (rawAuth !== undefined) headers.Authorization = rawAuth;
     else if (token) headers.Authorization = `Bearer ${token}`;
@@ -485,13 +520,13 @@ export async function run(argv, env, write = (line) => process.stdout.write(line
 
   // [one healthy automation cycle], from automation-service's public event log. Names and times only. Its M2M token is
   // minted by auth-service (POST /auth/v1/m2m-token), and every read it makes of agent-service is introspected by it.
-  check("automation cycle (M2M mint + introspection)", "automation-service is armed and its event log shows a healthy cycle since SINCE", async () => {
+  check("automation cycle (M2M mint + introspection)", "HARD GATE: automation-service (restarted at SINCE) is armed and logs a planner_shadow_assignment since SINCE: its freshly minted M2M token was introspected active", async () => {
     const status = await call("GET", "/api/automation/v1/autopilot/status");
     expectStatus(status, 200);
     expectJson(status);
     const lifecycle = typeof status.json.status === "string" ? status.json.status : "(no status member)";
     const mode = typeof status.json.mode === "string" ? status.json.mode : "none";
-    if (lifecycle !== "armed") throw new Skip(`autopilot is ${lifecycle}, not armed, so no cycle runs (arming it, live or shadow, is the owner's call, with the fleet:control token; shadow is enough)`, "AUTOMATION_CYCLE");
+    if (lifecycle !== "armed") fail(`autopilot is ${lifecycle}, not armed, so no cycle runs and the mint path is unproven: arm it in SHADOW mode (the owner's call, with the fleet:control token) before the probe`);
     const res = await call("GET", "/api/automation/v1/autopilot/events?limit=200");
     expectStatus(res, 200);
     expectJson(res);
@@ -502,9 +537,9 @@ export async function run(argv, env, write = (line) => process.stdout.write(line
     const summary = Object.entries(count).sort().map(([t, n]) => `${t}x${n}`).join(" ") || "(none)";
     const errors = recent.filter((e) => ERROR_TYPES.has(e.type));
     if (errors.length > 0) fail(`error events since SINCE: ${summary}`);
-    const proof = recent.filter((e) => CYCLE_EVENTS.has(e.type));
+    const proof = recent.filter((e) => e.type === CYCLE_EVENT);
     if (proof.length === 0) {
-      fail(`armed (${mode}) but none of ${[...CYCLE_EVENTS].join(" / ")} since ${new Date(sinceMs).toISOString()}: ${summary}. In live mode the proof is agent_credits_snapshot; in shadow mode it is planner_shadow_assignment`);
+      fail(`armed (${mode}) but no ${CYCLE_EVENT} since ${new Date(sinceMs).toISOString()} (SINCE must be the automation-service restart time): ${summary}. Wait for a planner cycle, then run again`);
     }
     const warn = recent.filter((e) => WARN_TYPES.has(e.type)).length;
     return `armed (${mode}); events since SINCE: ${summary}${warn > 0 ? `; NOTE ${warn} action failure event(s): read them on the host` : ""}`;
@@ -517,7 +552,7 @@ export async function run(argv, env, write = (line) => process.stdout.write(line
     "  1. MANDATORY GATE, the outside checks cannot prove it: the running image is the one under test:  docker inspect auth-service --format '{{.Config.Image}}'   (must print ghcr.io/v-m-pioneer-trading/auth-service:sha-<tip of the cutover PR>; the TypeScript image also logs 'auth-service listening on :3005' at start and the Go one does not; a Go image anywhere makes every outside check above meaningless)",
     "  2. not restarting, no OOM, the memory cap in force, RSS recorded:  docker inspect auth-service --format 'restarts={{.RestartCount}} oom={{.State.OOMKilled}} mem={{.HostConfig.Memory}}'; docker stats --no-stream auth-service   (the infrastructure PR's --memory must be applied BEFORE the rc deploy)",
     "  3. the auth-service log since the deploy has no failure line (no 'failed', 'upstream error', 'poller tick'); it never holds a secret or a token:  docker logs --since <SINCE> auth-service 2>&1 | grep -ciE 'failed|upstream error|poller tick'",
-    "  4. both M2M callers, mints succeeding: automation-service's log has no 401/503 from POST /auth/v1/m2m-token (docker logs --since <SINCE> automation-service 2>&1 | grep -ciE '401|503'), and auth-service's log has no 'minting a machine token ... failed'. ai-service: NOT PROBED (parked, not deployed).",
+    "  4. HARD GATE, the mint path: after the rc deploy, `docker restart automation-service` (the deploy script does it and prints RESTARTED_AT = SINCE); then m2m_token_posts > 0 and m2m_mint_failures = 0 in auth-service's log since then, and zero 401/403/503 in automation-service's log since the restart (cutover-hostcheck.ps1 fails on any of them). ai-service: NOT PROBED (parked, not deployed).",
     "  5. st-gateway's token fetch (GET /auth/v1/token): the signed-in GET /api/agent/v1/agent above returning 200 proves it. The lane deriver's introspection calls show as 'POST request: to /auth/v1/introspect' lines in auth-service's log (count them: more than zero).",
     "  6. the SQLite state is preserved: GET /api/auth/v1/status shows the SAME agent symbol before the deploy and after (EXPECT_AGENT_SYMBOL); record the symbol, never a token.",
     "  7. not probed from outside, by design: GET /auth/v1/token, POST /auth/v1/introspect, POST /auth/v1/m2m-token (secret-gated, not routed by CloudFront), and register / agent-token with a valid agent:reset session (they reset the game account). The contract suite covers them on every CI build.",
@@ -597,7 +632,7 @@ if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) 
     },
     (err) => {
       process.stderr.write(`probe crashed: ${err instanceof Error ? err.name : "error"}\n`);
-      process.exitCode = 2;
+      process.exitCode = 3;
     },
   );
 }

@@ -2,12 +2,22 @@
 # PowerShell 7, AWS CLI v2. Prints counts, docker status lines and at most 10 matching log lines per service (cut to 200
 # characters); the services' logs never hold a token (their invariant), and no environment variable is printed.
 #
-#   pwsh ./scripts/cutover-hostcheck.ps1 -Since 2026-10-06T12:30:00Z [-Sha <40 hex tip of the cutover PR>]
+#   pwsh ./scripts/cutover-hostcheck.ps1 -Since 2026-10-06T12:30:00Z -Sha <40 hex tip of the cutover PR>
 #
-# -Since is the time the rc deploy finished (cutover-deploy-rc.ps1 prints it). Read the output against the table at the end.
+# -Since is RESTARTED_AT: the time cutover-deploy-rc.ps1 restarted automation-service after the rc deploy (it prints it).
+# Run this AFTER the probe, once automation has had a planner cycle since the restart.
+#
+# HARD GATE (the script exits 1 unless all of these hold; the rest of the output is for reading):
+#   - the running image is sha-<Sha>, state running, restarts=0, GET /health on 127.0.0.1:3005 is 200;
+#   - m2m_token_posts > 0: automation-service minted through THIS auth-service since the restart (its token cache was
+#     emptied by the restart; without it the probe could pass on a 24 h token Go minted), and m2m_mint_failures = 0;
+#   - zero 401/403/503 lines and zero m2m failure lines in automation-service's log since the restart.
+# The probe adds the other half: a planner_shadow_assignment since the restart (a minted token introspected active).
+# ai-service is parked and not deployed: NOT PROBED.
 param(
   [Parameter(Mandatory = $true)][ValidatePattern('^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z$')][string]$Since,
-  [ValidatePattern('^[0-9a-f]{40}$')][string]$Sha
+  # (?-i:...): ValidatePattern is case-insensitive by default; a sha is lowercase hex.
+  [Parameter(Mandatory = $true)][ValidatePattern('^(?-i:[0-9a-f]{40})$')][string]$Sha
 )
 $ErrorActionPreference = 'Stop'
 $Region = 'eu-central-1'
@@ -58,13 +68,26 @@ for ($i = 0; $i -lt 30; $i++) {
 }
 "status: $s"
 $out = aws ssm get-command-invocation --region $Region --command-id $id --instance-id $InstanceId --query StandardOutputContent --output text
+$out = ($out | Out-String)
 $out
-aws ssm get-command-invocation --region $Region --command-id $id --instance-id $InstanceId --query StandardErrorContent --output text
+Write-Host (aws ssm get-command-invocation --region $Region --command-id $id --instance-id $InstanceId --query StandardErrorContent --output text | Out-String)
 
-if ($Sha) {
-  $want = "image=ghcr.io/v-m-pioneer-trading/auth-service:sha-$Sha "
-  if (($out | Out-String).Contains($want)) { 'GATE PASS: the running image is the cutover PR tip.' } else { 'GATE FAIL: the running image is NOT sha-' + $Sha + '. Roll back.' }
+# ---- the hard gate -----------------------------------------------------------------------------------------------
+function Num($name) { if ($out -match "(?m)^$name=(\d+)\s*$") { return [int]$Matches[1] } else { return $null } }
+$why = @()
+if ($s -ne 'Success') { $why += "the host command ended $s" }
+if (-not $out.Contains("image=ghcr.io/v-m-pioneer-trading/auth-service:sha-$Sha ")) { $why += "the running image is NOT sha-$Sha" }
+if ($out -notmatch '(?m)^image=\S+ state=running ') { $why += 'auth-service is not running' }
+if ($out -notmatch '(?m)^restarts=0 ') { $why += 'auth-service restarts is not 0 (crash loop?)' }
+if ($out -notmatch '(?m)^health_3005=200\s*$') { $why += 'GET /health on 127.0.0.1:3005 is not 200' }
+$posts = Num 'm2m_token_posts'
+if ($null -eq $posts -or $posts -le 0) { $why += "m2m_token_posts is $posts, not > 0: automation-service has not minted through this auth-service since $Since (restart it, wait for a planner cycle, run again)" }
+foreach ($k in 'm2m_mint_failures', 'count_401_403_503', 'count_m2m_failures') {
+  $v = Num $k
+  if ($null -eq $v -or $v -ne 0) { $why += "$k is $v, not 0" }
 }
+if ($why.Count -eq 0) { Write-Host "HARD GATE PASS (since $Since): image sha-$Sha running, restarts=0, /health 200, m2m_token_posts=$posts, no mint failure, no 401/403/503 in automation-service's log. ai-service: NOT PROBED." }
+else { Write-Host "HARD GATE FAIL: $($why -join '; ')."; $failed = $true }
 @'
 
 Read it like this (counts are since -Since):
@@ -74,7 +97,8 @@ Read it like this (counts are since -Since):
   3b introspect_posts > 0 (the callers and st-gateway's lane deriver), m2m_token_posts > 0 once automation-service has
      minted (its token lives 24 h, so a restart or a first mint is what shows it), vault_token_gets > 0 (st-gateway's token
      fetch: with the signed-in /api/agent/v1/agent 200 from the probe it proves the vault route), m2m_mint_failures = 0.
-  4  automation-service: both counts 0 (no 401/503 from the M2M mint). ai-service is parked: NOT PROBED.
+  4  automation-service: both counts 0 (no 401/403/503 from the M2M mint): part of the hard gate. ai-service is parked: NOT PROBED.
   5  every count 0.
   6  the SAME agent symbol as before the cutover (record the symbol, never a token).
 '@
+if ($failed) { exit 1 }

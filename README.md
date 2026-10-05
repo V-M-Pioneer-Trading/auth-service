@@ -211,7 +211,7 @@ aws ssm get-command-invocation --region eu-central-1 \
 
 Check first that the CI deploy on `main` is idle, or the two runs race. **A rollback is not sticky:** the next merge to `main`, any run of the bootstrap without `imageTag`, and any `terraform apply` that changes the document redeploy `:latest`. Follow a rollback with a revert PR on `main` before anything else merges there. An older image may not accept today's environment (the introspection and M2M variables), so read the command's status; the `/health` poll fails it if the container crash-loops.
 
-The last Go image, for a rollback across the cutover, is `sha-8a09f84d8898e4e1bd1428cce264250ab9ce78d1` (the tip of `main` before the cutover PR; its `container` run built and deployed the Go Dockerfile). `scripts/cutover-probe.mjs` is the production probe used for the cutover (see its header and the cutover PR, auth-service#17), with `scripts/cutover-deploy-rc.ps1` and `scripts/cutover-hostcheck.ps1` for the host side; the probe is safe to re-run after any deploy.
+The last Go image, for a rollback across the cutover, is `sha-8a09f84d8898e4e1bd1428cce264250ab9ce78d1` (the tip of `main` before the cutover PR; its `container` run built and deployed the Go Dockerfile). `scripts/cutover-probe.mjs` is the production probe used for the cutover (see its header; the cutover was issue #17, PR #26), with `scripts/cutover-deploy-rc.ps1` and `scripts/cutover-hostcheck.ps1` for the host side; the probe is safe to re-run after any deploy.
 
 ### Secrets
 

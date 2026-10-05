@@ -20,8 +20,15 @@ updates:
         update-types: ["version-update:semver-major", "version-update:semver-minor"]
     open-pull-requests-limit: 5
 
-  # Dockerfile: the node:24-slim build stages and the distroless runtime, both pinned by digest.
+  # Dockerfile: the node:24-slim build stages and the distroless runtime, both pinned by digest. Majors are ignored for
+  # both so the build and runtime stages cannot diverge (node 24 stages, nodejs24 distroless): moving to Node 26 is one
+  # reviewed PR that changes all three FROM lines, the engines field and the runtime floor together.
   - package-ecosystem: docker
     directory: /
     schedule:
       interval: weekly
+    ignore:
+      - dependency-name: node
+        update-types: ["version-update:semver-major"]
+      - dependency-name: "gcr.io/distroless/nodejs*"
+        update-types: ["version-update:semver-major"]
