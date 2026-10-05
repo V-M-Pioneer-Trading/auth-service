@@ -1,9 +1,9 @@
 # Contract cases the TypeScript service does not pass yet: every case of a route that is not ported.
 # Step 7a ported the health and status routes, CORS, the router table and the startup refusals; 7b ported
-# POST /auth/v1/introspect (every introspection case, the fixture included, is off this list). What is listed below
-# arrives with 7c (the vault: GET /auth/v1/token, register, restore, the poller, the Clerk session gate) and 7d
-# (machine tokens). The list shrinks with each of those PRs and is empty after 7d. A case of a describe that is
-# partly ported is listed by its full name.
+# POST /auth/v1/introspect (every introspection case, the fixture included, is off this list); 7d ported
+# POST /auth/v1/m2m-token (every machine-token case is off this list). What is listed below arrives with 7c (the vault:
+# GET /auth/v1/token, register, restore, the poller, the Clerk session gate), after which the list is empty. A case of
+# a describe that is partly ported is listed by its full name.
 #
 # One JavaScript regular expression per line, handed to the judge in scripts/run-contract.cjs, matched like
 # `node --test --test-skip-pattern`: against the test's name with its enclosing describe names in front, joined by
@@ -13,17 +13,6 @@
 #
 # scripts/run-contract.cjs refuses a run whose numbers do not match contract-skip.expected.
 
-^the 10 s backoff after a failed mint$
-^the mint timeout$
-^a token past its exp$
-^refresh at half the lifetime$
-^what it asks Clerk$
-^single flight and the cache$
-^what makes a minted token unusable \(503, nothing cached, one Clerk call\)$
-^the caller table$
-^the secret gate$
-^which callers are enabled$
-^tokens only introspect when the dev key is the verification key$
 ^the forced poll: GET /auth/v1/token\?afterUnauthorized=true$
 ^wipe detection through the forced poll$
 ^the 10 s cooldown on forced polls$
@@ -32,12 +21,7 @@
 ^what it sends to SpaceTraders$
 ^what it stores and answers$
 ^how upstream failures map to responses$
-^OPTIONS and CORS carries CORS on handler responses of every status, and on none of the router's own 404/405/301$
-^the M2M mint table is validated at startup has nothing to collide with when there is no introspection secret$
 ^settings that leave the service running in a fail-closed state without AUTH_INTROSPECTION_SECRET the route is mounted and rejects every caller, empty header included$
-^settings that leave the service running in a fail-closed state with no M2M callers configured the mint route rejects everyone and the rest works$
-^accepted spellings of keys DEV_M2M_SIGNING_KEY_FILE as PKCS#8 or PKCS#1 private key$
-^log hygiene, production mode$
 ^GET /auth/v1/token rejects a wrong or missing shared secret with 403, the envelope and no-store$
 ^GET /auth/v1/token does not accept the introspection secret, a caller secret, or a Clerk session in place of the shared secret$
 ^GET /auth/v1/token ignores a secret passed in the query string$

@@ -1,0 +1,18 @@
+// Writes the input of go-m2m-recorder.go.txt (see SOURCE.txt): the cases of src/testSupport/m2mCases.ts. Node 24 or
+// later (it imports the .ts file directly).
+//
+//   node go-m2m-recorder-input.mjs <ts>/src/testSupport > input.json   (copied out of this directory)
+import { fileURLToPath, pathToFileURL } from "node:url";
+import { join } from "node:path";
+
+const support = process.argv[2] ?? join(fileURLToPath(import.meta.url), "..", "..", "..", "testSupport");
+const { M2M_CASES_NOW_MS, TOKEN_CASES, BODY_CASES, PROXY_ENVS, PROXY_URLS } = await import(pathToFileURL(join(support, "m2mCases.ts")).href);
+process.stdout.write(
+  JSON.stringify({
+    nowMs: M2M_CASES_NOW_MS,
+    tokens: TOKEN_CASES,
+    bodies: BODY_CASES.map((s) => Buffer.from(s, "latin1").toString("base64")),
+    envs: PROXY_ENVS,
+    urls: PROXY_URLS,
+  }),
+);

@@ -41,3 +41,18 @@ introspection.json
   Do not edit it here. introspectionFixture.test.ts asserts this hash, so the copy pins itself; .gitattributes keeps the
   file -text so a Windows checkout holds the same LF bytes.
   sha256 90562110d24e47bfdcbf7ff05f1112b4bc840835bf728fa7f6bd81ff67bbeb9c
+
+go-m2m-verdicts.json
+  What the Go service's machine-token code answers on the corpus of src/testSupport/m2mCases.ts, recorded by
+  go-m2m-recorder.go.txt (Go 1.22.4; golang.org/x/net v0.19.1-0.20240412193750-db050b07227e and golang.org/x/text
+  v0.14.0, the revisions Go 1.22.4 vendors into net/http):
+  tokens   src/api/m2m.go's cacheEntryFrom, verbatim, at nowMs: "ok <expiresAt> <refreshAt>" or "refused"
+  bodies   the end of its clerkMinter, verbatim: json.NewDecoder(io.LimitReader(body, 64<<10)).Decode then the empty
+           check: "token <base64>" (a token over 200 bytes as "token sha256:<hex>") or "refused"
+  proxies  httpproxy.Config{...}.ProxyFunc() (what net/http's ProxyFromEnvironment runs), with FromEnvironment's
+           getEnvAny on each case's map, for every URL: "direct", "refused" (CGI) or "proxy <scheme> <host> <u=user|-> <p=password|->"
+  inputSha256 is the sha256 of the recorder's input; m2mGoParity.test.ts regenerates the input and checks it, so a
+  changed corpus without a re-recording fails. To re-record (Go and Node 24 on the PATH), in a scratch directory:
+    cp <this dir>/go-m2m-recorder.go.txt main.go && cp <this dir>/go-m2m-recorder-input.mjs.txt go-m2m-recorder-input.mjs
+    go mod init recorder && go get golang.org/x/net@db050b07227e golang.org/x/text@v0.14.0
+    node go-m2m-recorder-input.mjs <ts>/src/testSupport > input.json && go run . input.json > go-m2m-verdicts.json
