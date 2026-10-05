@@ -38,6 +38,36 @@
         "type": "object",
         "additionalProperties": false
       },
+      "MintedToken": {
+        "properties": {
+          "token": {
+            "type": "string"
+          },
+          "expires_at": {
+            "type": "integer",
+            "format": "int64",
+            "description": "The token's own `exp`, in whole seconds: read from it, never computed."
+          }
+        },
+        "required": [
+          "token",
+          "expires_at"
+        ],
+        "type": "object",
+        "additionalProperties": false
+      },
+      "M2MError": {
+        "properties": {
+          "error": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "error"
+        ],
+        "type": "object",
+        "additionalProperties": false
+      },
       "IntrospectionAnswer": {
         "anyOf": [
           {
@@ -184,6 +214,66 @@
         ],
         "security": [],
         "parameters": []
+      }
+    },
+    "/auth/v1/m2m-token": {
+      "post": {
+        "operationId": "Mint",
+        "responses": {
+          "200": {
+            "description": "The token and its `exp` as `expires_at`",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/MintedToken"
+                    },
+                    {
+                      "$ref": "#/components/schemas/M2MError"
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "unknown caller",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/M2MError"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "the token could not be minted",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/M2MError"
+                }
+              }
+            }
+          }
+        },
+        "description": "A Clerk M2M JWT for the calling service, whose `sub` names its Machine and whose `scope` is fixed by auth-service's\ncaller table (`automation-service`: `fleet:control`; `ai-service`: `events:write planner:advise`). The caller is\nidentified by its secret alone and requests nothing: no body, query or other header is read. The token is cached\nand served again until half its lifetime has passed. Never cacheable.",
+        "tags": [
+          "machine tokens"
+        ],
+        "security": [],
+        "parameters": [
+          {
+            "description": "The caller's own secret (M2M_CALLER_SECRET_<caller>). The first of repeated headers counts.",
+            "in": "header",
+            "name": "X-M2M-Caller-Secret",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ]
       }
     },
     "/auth/v1/introspect": {

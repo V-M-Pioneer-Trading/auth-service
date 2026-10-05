@@ -20,7 +20,7 @@ const hostShouldEscape = (c: number): boolean => {
 };
 
 /** Go's unescape(s, mode); null for the errors it returns. Works on bytes, as Go does. */
-function unescape(s: Buffer, mode: Mode): Buffer | null {
+export function unescape(s: Buffer, mode: Mode): Buffer | null {
   const out: number[] = [];
   for (let i = 0; i < s.length; i++) {
     const c = s[i] ?? 0;
@@ -47,7 +47,7 @@ function unescape(s: Buffer, mode: Mode): Buffer | null {
 const validOptionalPort = (port: string): boolean => port === "" || /^:[0-9]*$/.test(port);
 
 /** Go's parseHost: the unescaped host, or null. */
-function parseHost(host: Buffer): Buffer | null {
+export function parseHost(host: Buffer): Buffer | null {
   const text = host.toString("latin1");
   if (text.startsWith("[")) {
     const close = text.lastIndexOf("]");
@@ -75,7 +75,7 @@ export interface ParsedBaseUrl {
 }
 
 /** Go's getScheme: [scheme, rest], or null for its one error (a ":" at position 0). */
-function getScheme(raw: string): [string, string] | null {
+export function getScheme(raw: string): [string, string] | null {
   for (let i = 0; i < raw.length; i++) {
     const c = raw.charCodeAt(i);
     if ((c >= 0x61 && c <= 0x7a) || (c >= 0x41 && c <= 0x5a)) continue;

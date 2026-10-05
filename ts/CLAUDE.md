@@ -7,9 +7,10 @@ say "like Go": read them as "as the contract suite and the Go source pin it".
 
 Step 7a (the scaffold) ported: health, status, CORS, the router's 404/405/301 table, every startup refusal, SQLite.
 Step 7b ported Clerk JWT verification (`src/jwt/verify.ts`, `jose`) and `POST /auth/v1/introspect`
-(`src/introspection.ts`, `controllers/introspect.controller.ts`). Not ported, and deliberately unregistered so the
-contract skip list covers them: the vault, register, restore and the poller (7c), machine tokens (7d). The vault's
-operator routes must call the same `createVerifier` function in-process (decision 21: one verification code path).
+(`src/introspection.ts`, `controllers/introspect.controller.ts`). Step 7d ported `POST /auth/v1/m2m-token` (decision
+22: `src/m2m/`, `controllers/m2m.controller.ts`). Not ported, and deliberately unregistered so the contract skip list
+covers them: the vault, register, restore and the poller (7c). The vault's operator routes must call the same
+`createVerifier` function in-process (decision 21: one verification code path).
 
 ## Commands (from `ts/`)
 
@@ -69,12 +70,18 @@ root like the Go image: `/data/auth.db` is root-owned.
 | gorilla/mux and net/http artefacts | `src/http/muxCompat.ts`, `cors.ts`, `json.ts` | `app.test.ts`; contract `routing.test.ts` |
 | server hardening (unread bodies, timeouts, parse errors) | `src/server.ts` | `connections.test.ts` |
 | SQLite, same DDL | `src/db/` | `db.test.ts` against a file the Go image's `db` package wrote |
+| M2M: `cacheEntryFrom`, the decode of Clerk's answer (`encoding/json` field folding, first value, 64 KiB), `ProxyFromEnvironment` | `src/m2m/token.ts`, `goJson.ts`, `clerk.ts`, `proxy.ts` | `m2mGoParity.test.ts` against Go's recorded verdicts (80 tokens, 58 bodies, 1140 proxy decisions) |
+| M2M: the per-caller cache (single flight, detached mint, refresh at half life, 10 s backoff, 10 s timeout, expiry) | `src/m2m/cache.ts` | `m2mCache.test.ts` on a fake clock; contract `m2m-clerk*.test.ts` |
+| M2M: the route, both trust anchors, the Clerk request, redirects, the log | `src/m2m/service.ts`, `dev.ts`, `clerk.ts` | `m2m.test.ts` against a Clerk stub on a socket; contract `m2m-*.test.ts`, `startup.test.ts` |
 
 Never `url.Parse` through WHATWG `URL`, never `trim()` for Go's TrimSpace, never `createPublicKey(pem)` directly: each
 answers differently from Go on inputs the contract pins. Never `URLSearchParams` or `express.urlencoded` for the
 introspection form (no `;` error, no sticky escape error), never `req.headers[...]` for the introspection secret (Node
 joins repeats), and never `jwtVerify` without `verify.ts`'s Go checks around it (it reads padding, whitespace, a BOM and
-1e400 that golang-jwt refuses, and judges a fractional `exp` up to a second longer).
+1e400 that golang-jwt refuses, and judges a fractional `exp` up to a second longer). Never `JSON.parse` alone for
+Clerk's answer or a minted token's payload (`m2m/goJson.ts`: Go folds field names, takes the last of two spellings, and
+reads only the first value), never `fetch` for the mint (it follows redirects, and the Machine Secret Key must not), and
+never a request signal on the mint (it is detached: only its own 10 s timeout cancels it).
 
 ## Deliberate differences from Go
 
@@ -96,6 +103,9 @@ joins repeats), and never `jwtVerify` without `verify.ts`'s Go checks around it 
   Go has none; no startup refusal is added in the port, a follow-up after cutover); a present `iat` that is not a number;
   claims that are not valid UTF-8 (Go substitutes U+FFFD); a fractional `nbf` inside the last second of the leeway; an
   `nbf` so large that Go's int64 conversion wraps it into the past. None is producible by Clerk.
+* Machine tokens (7d): the mint request is HTTP/1.1 without Go's `User-Agent: Go-http-client/1.1` and
+  `Accept-Encoding: gzip` (Go would also try HTTP/2 to api.clerk.com); a `socks5://` proxy (which Go dials) fails the
+  mint instead; a transport failure is logged by its error code, not Go's error text. The proxy choice itself is Go's.
 
 ## Invariants
 
