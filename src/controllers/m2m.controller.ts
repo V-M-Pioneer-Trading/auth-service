@@ -23,7 +23,6 @@ export class M2MController extends Controller {
   @SuccessResponse(200, "The token and its `exp` as `expires_at`")
   @Response<M2MError>(401, "unknown caller")
   @Response<M2MError>(503, "the token could not be minted")
-  // eslint-disable-next-line @typescript-eslint/no-unused-vars -- the header parameter documents the secret in the spec; the handler reads the FIRST raw header itself
   public async mint(@Request() request: ExpressRequest, @Header("X-M2M-Caller-Secret") _secret?: string): Promise<MintedToken | M2MError> {
     this.setHeader("Cache-Control", "no-store");
     // The caller hanging up ends this request's wait, and nothing else: the mint is detached (m2m/cache.ts).

@@ -177,7 +177,7 @@ describe("where the lockfile resolves from", () => {
 });
 
 describe("the eslint-config release tarball (devDependencies only)", () => {
-  const good = "https://github.com/V-M-Pioneer-Trading/eslint-config/releases/download/v1.0.0/v-m-pioneer-trading-eslint-config-1.0.0.tgz";
+  const good = "https://github.com/V-M-Pioneer-Trading/eslint-config/releases/download/v1.1.0/v-m-pioneer-trading-eslint-config-1.1.0.tgz";
 
   it("is what package.json and the lockfile hold", () => {
     const { pkg, lock } = fresh();
@@ -245,7 +245,7 @@ describe("the eslint-config release tarball (devDependencies only)", () => {
   it("refuses a lockfile version that is not the release's version", () => {
     const { pkg, lock } = fresh();
     entry(lock, `node_modules/${ESLINT_CONFIG}`).version = "1.0.1";
-    expect(problems(pkg, lock)).toMatch(/is version "1\.0\.1" but resolves from the v1\.0\.0 release tarball/);
+    expect(problems(pkg, lock)).toMatch(/is version "1\.0\.1" but resolves from the v1\.1\.0 release tarball/);
   });
 
   it("refuses its top-level entry resolved from the registry instead of the release package.json names", () => {

@@ -57,9 +57,7 @@ export class OperatorController extends Controller {
   @Response<string>(409, "no credential configured to restore a token onto (text/plain)")
   public async restore(
     @Request() request: ExpressRequest,
-    // eslint-disable-next-line @typescript-eslint/no-unused-vars -- documents the header; vault.ts reads the first raw one
     @Header("Authorization") _authorization?: string,
-    // eslint-disable-next-line @typescript-eslint/no-unused-vars -- documents the body; vault.ts reads it after the session gate
     @Body() _body?: RestoreTokenRequest,
   ): Promise<Restored | SessionRefusal> {
     const refused = await sessionGate(request, introspectionOf(request).verifier, nowOf(request), SCOPE_AGENT_RESET);
@@ -82,9 +80,7 @@ export class OperatorController extends Controller {
   @Response<string>(502, "SpaceTraders could not be reached or answered something unusable (text/plain)")
   public async register(
     @Request() request: ExpressRequest,
-    // eslint-disable-next-line @typescript-eslint/no-unused-vars -- documents the header; vault.ts reads the first raw one
     @Header("Authorization") _authorization?: string,
-    // eslint-disable-next-line @typescript-eslint/no-unused-vars -- documents the body; vault.ts reads it after the session gate
     @Body() _body?: RegisterRequest,
   ): Promise<Registered | SessionRefusal> {
     const refused = await sessionGate(request, introspectionOf(request).verifier, nowOf(request), SCOPE_AGENT_RESET);

@@ -37,9 +37,7 @@ export class VaultController extends Controller {
   @Response<string>(503, "no agent token configured (text/plain)")
   public async token(
     @Request() request: ExpressRequest,
-    // eslint-disable-next-line @typescript-eslint/no-unused-vars -- documents the header; vault.ts reads the FIRST raw header itself
     @Header("X-Auth-Service-Secret") _secret?: string,
-    // eslint-disable-next-line @typescript-eslint/no-unused-vars -- documents the flag; vault.ts reads it with Go's query rules
     @Query("afterUnauthorized") _afterUnauthorized?: string,
   ): Promise<AgentToken | VaultRefusal> {
     const answer = await getToken(request, vaultOf(request));

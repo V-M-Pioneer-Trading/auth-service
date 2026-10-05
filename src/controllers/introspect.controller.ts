@@ -26,7 +26,6 @@ export class IntrospectController extends Controller {
   @Post("auth/v1/introspect")
   @SuccessResponse(200, "The verdict: `{active:false}`, or `{active:true, sub, scope, exp, kind}` and nothing else")
   @Response<IntrospectionRefusal>(401, "a valid introspection secret is required")
-  // eslint-disable-next-line @typescript-eslint/no-unused-vars -- the header parameter documents the secret in the spec; the handler reads the FIRST raw header itself (introspection.ts)
   public async introspect(@Request() request: ExpressRequest, @Header("X-Introspection-Secret") _secret?: string): Promise<IntrospectionAnswer | IntrospectionRefusal> {
     this.setHeader("Cache-Control", "no-store");
     const answer = await introspect(request, introspectionOf(request), () => nowOf(request));
