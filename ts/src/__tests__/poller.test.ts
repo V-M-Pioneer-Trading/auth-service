@@ -245,6 +245,15 @@ describe("one poll: the state machine", () => {
     }
   });
 
+  it("is not a wipe when the stored date is Go's zero time written out (only a hand-edited file holds one)", async () => {
+    const w = world();
+    w.db.prepare("UPDATE credential SET reset_date = '0001-01-01T02:00:00+02:00'").run();
+    w.upstream.root = () => Promise.resolve(rootOf("2026-09-15", "2099-02-01T00:00:00Z"));
+    await w.poller.tick(false);
+    expect(w.upstream.registerCalls).toHaveLength(0);
+    expect(dates(getCredential(w.db))).toEqual(["2026-09-15T00:00:00Z", "2099-02-01T00:00:00Z"]);
+  });
+
   it("compares to the nanosecond, as Go's Time.Equal does: a fraction on SpaceTraders' resetDate is a change", async () => {
     const w = world();
     w.upstream.root = () => Promise.resolve(rootOf("2026-09-01T00:00:00.000000001Z", "2099-01-01T00:00:00Z"));
@@ -276,9 +285,10 @@ describe("forced polls: the 10 s cooldown", () => {
   });
 
   it("is closed until 10 s have passed on the monotonic clock, and open at 10 s exactly", async () => {
+    expect(FORCED_POLL_COOLDOWN_MS).toBe(10_000);
     const w = world();
     await w.poller.pollNow();
-    w.monotonic.now += FORCED_POLL_COOLDOWN_MS - 1;
+    w.monotonic.now += 9_999;
     await w.poller.pollNow();
     expect(w.upstream.rootCalls).toHaveLength(1);
     w.monotonic.now += 1;
