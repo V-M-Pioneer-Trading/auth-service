@@ -293,7 +293,7 @@ if (require.main === module) {
   const pkg = JSON.parse(read("package.json"));
   const problems = check(pkg, lock, read("allowed-dependencies.txt"), read("dependency-snapshot.txt"), { npmrc: fs.existsSync(path.join(root, ".npmrc")) });
   if (problems.length > 0) {
-    for (const p of problems.slice(0, 60)) console.error(`::error file=ts/dependency-snapshot.txt::${p}`);
+    for (const p of problems.slice(0, 60)) console.error(`::error file=dependency-snapshot.txt::${p}`);
     if (problems.length > 60) console.error(`::error::... and ${problems.length - 60} more`);
     process.exit(1);
   }

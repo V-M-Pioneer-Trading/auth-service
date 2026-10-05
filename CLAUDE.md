@@ -1,9 +1,12 @@
-# CLAUDE.md (ts/)
+# CLAUDE.md
 
-Contributor and agent notes for the TypeScript port of auth-service (meta#103, auth-design.md decision 23). The Go
-service in `../src` is what runs in production until the cutover (auth-service#17); this package is built beside it, and
-its behaviour is pinned to Go's by the black-box suite in `../contract` (never edited to make code pass). Many comments
-say "like Go": read them as "as the contract suite and the Go source pin it".
+Contributor and agent notes for auth-service, the TypeScript service (meta#103, auth-design.md decision 23). It replaced
+the Go service at the cutover (auth-service#17): the Go code is deleted from `main` and lives in history, the last Go
+commit being `8a09f84d8898e4e1bd1428cce264250ab9ce78d1`. Comments that name `src/api/m2m.go`, `src/db/db.go` and the like
+point at that commit (`git show 8a09f84:src/api/m2m.go`). The service's behaviour is pinned to Go's by the black-box suite
+in `contract/` (never edited to make code pass). Many comments say "like Go": read them as "as the contract suite and the
+Go source pin it". README.md has what an operator needs: deploy, rollback, the SQLite `/data` volume, environment
+variables and secrets.
 
 Step 7a (the scaffold) ported: health, status, CORS, the router's 404/405/301 table, every startup refusal, SQLite.
 Step 7b ported Clerk JWT verification (`src/jwt/verify.ts`, `jose`) and `POST /auth/v1/introspect`
@@ -12,9 +15,9 @@ Token and Reset Agent (`src/vault.ts`, `controllers/vault.controller.ts`, `opera
 (`src/poller.ts`), the SpaceTraders client (`src/spacetraders/client.ts`) and the row's writes (`src/db/credential.ts`).
 The operator routes call the introspection verifier in-process (decision 21: one verification code path). Step 7d
 ported `POST /auth/v1/m2m-token` (decision 22: `src/m2m/`, `controllers/m2m.controller.ts`). Every route is ported: the
-contract skip list is empty.
+contract skip list is empty. The cutover PR (auth-service#17) moved the package to the repository root and deleted the Go code.
 
-## Commands (from `ts/`)
+## Commands (from the repository root)
 
 | Task | Command |
 |---|---|
@@ -23,11 +26,32 @@ contract skip list is empty.
 | Typecheck / lint / build / test | `npm run typecheck` / `npm run lint` / `npm run build` / `npm test` |
 | Regenerate the OpenAPI spec | `npm run openapi` (CI fails on drift in `openapi.json`) |
 | Dependency gate | `npm run check:deps`; after any change to `package-lock.json`, `npm run snapshot:deps` and review the diff |
-| Contract suite against the image | `docker build -t auth-service:contract-ts .` then `CONTRACT_IMAGE=auth-service:contract-ts node scripts/run-contract.cjs` |
+| Contract suite against the image | `docker build -t auth-service:contract .` then `CONTRACT_IMAGE=auth-service:contract node scripts/run-contract.cjs` |
+| Production probe (after a deploy) | `node scripts/cutover-probe.mjs --dry-run` lists it; see its header and `scripts/cutover-*.ps1` |
 
 Node 24.15 or later: `node:sqlite` is a release candidate from there (experimental before), and `src/runtime.ts` refuses to
 start below it. The image is `gcr.io/distroless/nodejs24-debian13` (the debian12 tag is frozen at Node 24.14), running as
-root like the Go image: `/data/auth.db` is root-owned.
+root like the Go image did: `/data/auth.db` is root-owned.
+
+## CI and the required checks
+
+`.github/workflows/container.yml` has four jobs. **`ts-checks`** (the dependency gate and `npm audit`), **`test`** (typecheck,
+lint, build, the `openapi.json` freshness check, Jest) and **`contract`** (the black-box suite against the image the root
+Dockerfile builds, judged by `scripts/run-contract.cjs`) are the checks branch protection requires on `main`
+(`enforce_admins` on): never rename or drop one without changing the protection in the same step, because a required check
+that no job reports blocks every merge. `test` and `contract` wait for `ts-checks`, so nothing is installed from a lockfile
+the gate has not passed. **`docker`** builds the arm64 image and, on `main` only, tags `:latest` and redeploys through SSM
+(tip-of-main check, one deploy at a time); it waits for `test` and `ts-checks`, not for `contract`. A `v*` tag pushes
+`sha-<40 hex>` and never deploys: that is how a pull request's tip gets an image to deploy by hand and probe.
+
+## Production probe
+
+`scripts/cutover-probe.mjs` (with `__tests__/cutoverProbe.test.ts`, stub-backed) probes the public domain: the public auth
+routes, the operator routes' refusals, and every introspection caller. Its output is status codes and member names only,
+never a token, a bearer or a body, and it never calls `/auth/v1/token`, `/auth/v1/m2m-token` or `/auth/v1/introspect`.
+**Never extend it to call `register` or `agent-token` with a session that may hold `agent:reset`: that resets the game
+account.** It cannot tell the Go image from this one, so after any deploy that matters, `docker inspect auth-service` on the
+host is the gate (`scripts/cutover-deploy-rc.ps1` and `scripts/cutover-hostcheck.ps1` run it through SSM).
 
 ## The dependency gate (the mitigation decision 23 accepts the npm risk on)
 
@@ -165,9 +189,9 @@ base)` for a Location (WHATWG reads `///h`, `/\h`, `http:\\h` as another host wh
 ## Invariants
 
 1. No SpaceTraders credential, key or secret is logged, echoed in a refusal, or placed in an error message.
-2. A route with no controller does not exist: the contract's skip list is the only record of what is not ported.
+2. A route with no controller does not exist (the contract suite's skip list, `contract-skip.txt`, is empty and stays so).
 3. The schema does not change in the port; a rollback to the Go image must open the file.
-4. `contract/` is never edited by a port PR.
+4. `contract/` is never edited to make code pass; a change to it is a deliberate change of the contract. (The cutover PR touched only its fixture path and README.)
 
 ---
 

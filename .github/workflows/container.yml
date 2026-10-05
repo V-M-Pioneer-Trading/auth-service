@@ -38,9 +38,33 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
-  # Runs on pull requests *and* on push: previously a direct push to main
-  # skipped the tests entirely and went straight to build-and-deploy.
+  # Required checks on main: `test`, `contract` and `ts-checks` (the dependency gate). Keep these three job names: a
+  # required check that no job reports blocks every merge, enforce_admins included.
+  #
+  # The dependency gate runs on its own and everything that installs or builds from the lockfile waits for it, so
+  # nothing is installed from a lockfile the gate has not passed (decision 23's mitigation for the npm risk).
+  ts-checks:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+
+      # Direct dependencies are exactly the allowlist, and package-lock.json holds exactly the packages of the
+      # committed transitive snapshot: a new package is a diff in dependency-snapshot.txt, never a silent arrival.
+      # Reads package.json, the lockfile and the two text files; installs nothing.
+      - name: Dependency gate (allowlist and transitive snapshot)
+        run: npm run check:deps
+
+      - name: Audit
+        run: npm audit --audit-level=high
+
+  # Runs on pull requests *and* on push: a direct push to main must not skip the tests and go straight to the deploy.
   test:
+    needs: ts-checks
     runs-on: ubuntu-latest
     # The concurrency group spans the whole workflow, so a hung test job holds
     # the deploy slot too. The suite takes a minute or two.
@@ -48,29 +72,89 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - uses: actions/setup-go@v5
+      - uses: actions/setup-node@v4
         with:
-          go-version: "1.22"
-          cache-dependency-path: src/go.sum
+          node-version: 24
+          cache: npm
+          cache-dependency-path: package-lock.json
 
-      - working-directory: src
-        run: go build ./...
+      # --ignore-scripts: no dependency's install script runs, here or in the image.
+      - run: npm ci --ignore-scripts
 
-      - working-directory: src
-        run: go vet ./...
+      # tsoa codegen, then tsc over sources and tests with the strict flag set.
+      - run: npm run typecheck
 
-      - working-directory: src
-        run: go test ./...
+      - name: Lint
+        run: npm run lint
+
+      - run: npm run build
+
+      # The committed openapi.json must match the controllers. Regenerates it (no server, DB or network) and fails on
+      # any difference.
+      - name: Check openapi.json is up to date
+        run: |
+          npm run openapi
+          # git status, not git diff: a deleted or never-committed file shows as untracked, which git diff would let through.
+          test -z "$(git status --porcelain -- openapi.json)" || { git diff -- openapi.json; echo "::error file=openapi.json::openapi.json is out of date. Run 'npm run openapi' and commit the result."; exit 1; }
+
+      - run: npm test
+
+  # The black-box HTTP contract suite (contract/) against the image the root Dockerfile builds, judged by
+  # scripts/run-contract.cjs: the whole suite runs unfiltered, a case off contract-skip.txt must pass and a case on it
+  # must not (the list is empty), and the measured numbers must equal contract-skip.expected. contract/ is never edited
+  # to make this pass. It is the parity record of the Go to TypeScript port and stays a gate; it never holds up the
+  # deploy job (branch protection requires it before a merge).
+  contract:
+    needs: ts-checks
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+          cache-dependency-path: contract/package-lock.json
+
+      - name: Build the image under test
+        run: docker build -t auth-service:contract .
+
+      # The image's own runtime: node:sqlite is a release candidate from Node 24.15, and the image runs as root (the
+      # existing /data/auth.db is root-owned).
+      - name: The image's Node is at least 24.15 and it runs as root
+        run: |
+          docker run --rm auth-service:contract -e '
+            const [major, minor] = process.versions.node.split(".").map(Number);
+            console.log("node", process.versions.node, "uid", process.getuid());
+            if (major < 24 || (major === 24 && minor < 15)) { console.error("Node is below 24.15"); process.exit(1); }
+            if (process.getuid() !== 0) { console.error("not root"); process.exit(1); }
+          '
+
+      - name: Install the suite's dev dependencies
+        working-directory: contract
+        run: npm ci --ignore-scripts
+
+      - name: Typecheck the suite
+        working-directory: contract
+        run: npm run typecheck
+
+      - name: Run the contract suite against the image
+        env:
+          CONTRACT_IMAGE: auth-service:contract
+        run: node scripts/run-contract.cjs
 
   docker:
     # A push to main or a tag, or a manual dispatch on main; never a pull
     # request, and no image built from a dispatch on another branch.
     if: github.event_name == 'push' || (github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main')
-    needs: test
+    # The dependency gate and the tests, not the contract suite (it never holds up a deploy; protection requires it
+    # before the merge).
+    needs: [test, ts-checks]
     # Deploy credentials live on this job alone. Declared at workflow level they
     # reached the test job too, and since that job now runs on pushes to main its
     # OIDC token would satisfy the deploy role's trust policy: dependency code and
-    # test code run by `go test` could have assumed the role that redeploys
+    # test code run by `npm test` could have assumed the role that redeploys
     # production.
     permissions:
       contents: read
@@ -184,6 +268,9 @@ jobs:
           echo "SSM command $command_id"
           # 90 polls, a little over 15 minutes. The slowest bootstrap
           # (agent-service: MySQL, two pulls, /health) takes about 7.
+          # auth-service's own bootstrap is quick: one pull, then it polls GET /health on 127.0.0.1:3005 for up
+          # to ~90 s (30 tries, 3 s apart) and fails the command if the container never answers. The Node image listens
+          # within a second or two of start (after the SQLite file opens), so that window is ample.
           for _ in $(seq 90); do
             sleep 10
             # InvocationDoesNotExist for a moment right after send-command,

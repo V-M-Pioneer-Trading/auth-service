@@ -1,12 +1,14 @@
-// The vendored introspection fixture (src/api/testdata/introspection.json) is a
-// verbatim copy of meta's. Its sha256 is pinned in SOURCE.txt beside it.
+// The vendored introspection fixture (contract/fixtures/introspection.json) is a
+// verbatim copy of meta's. Its sha256 is pinned in SOURCE.txt beside it. The
+// service's Jest suite (src/__tests__/introspectionFixture.test.ts) reads this
+// same copy.
 import { createHash } from "node:crypto";
 import { readFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 
 const here = dirname(fileURLToPath(import.meta.url));
-export const FIXTURE_DIR = join(here, "..", "..", "src", "api", "testdata");
+export const FIXTURE_DIR = join(here, "..", "fixtures");
 
 export interface FixtureCase {
   name: string;
