@@ -29,7 +29,7 @@
     "@types/jest": "^30.0.0",
     "@types/node": "^24.19.1",
     "@types/supertest": "^6.0.3",
-    "@v-m-pioneer-trading/eslint-config": "https://github.com/V-M-Pioneer-Trading/eslint-config/releases/download/v1.0.0/v-m-pioneer-trading-eslint-config-1.0.0.tgz",
+    "@v-m-pioneer-trading/eslint-config": "https://github.com/V-M-Pioneer-Trading/eslint-config/releases/download/v1.1.0/v-m-pioneer-trading-eslint-config-1.1.0.tgz",
     "eslint": "^10.12.0",
     "jest": "^30.5.2",
     "supertest": "^6.3.4",

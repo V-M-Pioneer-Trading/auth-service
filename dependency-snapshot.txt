@@ -284,7 +284,7 @@ vary@1.1.2 sha512-BNGbWLfd0eUPabhkXUVm0j8uuvREyTh5ovRa/dyow/BqAbZJyC+5fU+IzQOzmA
 @unrs/resolver-binding-win32-arm64-msvc@1.12.2 sha512-qzNyg3xL0VPQmCaUh+N5jSitce6k+uCBfMDesWRnlULOZaqUkaJ0ybdT+UqlAWJoQjuqfIU/0Ptx9bteN4D82g==
 @unrs/resolver-binding-win32-ia32-msvc@1.12.2 sha512-WD9sY00OfpHVGfsnHZoA8jVT+esS/Bg8z8jzxp5BnDCjjwsuKsPQrzswwpFy4J1AUJbXPRfkpcX0mXrzeXW79g==
 @unrs/resolver-binding-win32-x64-msvc@1.12.2 sha512-nAB74NfSNKknqQ1RrYj6uz8FcXEomu/MATJZxh/x+BArzN2U3JbOYC0APYzUIGhVY3m5hRxA8VPNdPBoG8txlA==
-@v-m-pioneer-trading/eslint-config@1.0.0 sha512-Fpy3j3fv8d3a5gXPBbh8AJIMt5kbWOKfZ1vbkmQhevtkkYvzAFA/gGCbdP0r2RnEAjiDf7rUJvpHEKvMGf7fmA==
+@v-m-pioneer-trading/eslint-config@1.1.0 sha512-gNp86uDrO0a4Pxr6P7XLbhQbl2Y4/qJndw2ceDm+k/JGayXj/qQLqFu/qj1ZGsTJOpoSvsCq+k+Hu9iHAEjmVQ==
 acorn-jsx@5.3.2 sha512-rq9s+JNhf0IChjtDXxllJ7g41oZk5SlXtp0LHwyA5cejwn7vKmKp4pPri6YEePv2PU65sAsegbXtIinmDFDXgQ==
 acorn@8.18.0 sha512-lGq+9yr1/GuAWaVYIHRjvvySG5/4VfKIvC8EWxStPdcDh/Ka7FG3twP6v4d5BkravUilhIAsG4Qj83t02LWUPQ==
 ajv@6.15.0 sha512-fgFx7Hfoq60ytK2c7DhnF8jIvzYgOMxfugjLOSMHjLIPgenqa7S7oaagATUq99mV6IYvN2tRmC0wnTYX6iPbMw==
