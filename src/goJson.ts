@@ -18,7 +18,6 @@
  * Error messages are Go's in shape; their wording is not pinned (the epic's accepted deviation 1) beyond the
  * `invalid request body: ` prefix the routes put in front.
  */
-import { decodeRune } from "./http/goForm";
 
 /** A decode failure: a syntax error, an early end, or a value of the wrong type. */
 export class GoJsonError extends Error {
@@ -35,6 +34,20 @@ type Value =
   | { readonly kind: "number"; readonly text: string }
   | { readonly kind: "bool" }
   | { readonly kind: "null" };
+
+/**
+ * What a struct has for a value: a string, an int, or a nested struct. The parser keeps only the values a field of the
+ * struct is for (and the objects on the way to them): anything else is read for its syntax and dropped, so the cost of a
+ * body does not depend on how much of it the struct ignores.
+ */
+type FieldType = Shape[string];
+
+const EMPTY_OBJECT: Value = { kind: "object", entries: [] };
+const EMPTY_ARRAY: Value = { kind: "array" };
+const BOOL: Value = { kind: "bool" };
+const NULL: Value = { kind: "null" };
+/** A value that was read and dropped: nothing looks at it. */
+const SKIPPED: Value = { kind: "null" };
 
 /**
  * Go's quoteChar, for a syntax error's message: the byte read as the rune of the same number, quoted as strconv.Quote
@@ -55,7 +68,6 @@ function quoteChar(c: number): string {
 /** Go's scanner refuses nesting deeper than this (maxNestingDepth): the 10001st open bracket is a syntax error. */
 export const MAX_NESTING_DEPTH = 10000;
 
-const isWhite = (c: number | undefined): boolean => c === 0x20 || c === 0x09 || c === 0x0a || c === 0x0d;
 const isDigit = (c: number | undefined): boolean => c !== undefined && c >= 0x30 && c <= 0x39;
 const hexValue = (c: number | undefined): number => {
   if (c === undefined) return -1;
@@ -64,6 +76,39 @@ const hexValue = (c: number | undefined): number => {
   if (c >= 0x61 && c <= 0x66) return c - 0x57;
   return -1;
 };
+
+/** The single-character escapes (`\n` and the like), by the byte after the backslash. */
+const SIMPLE_ESCAPE: (string | undefined)[] = [];
+SIMPLE_ESCAPE[0x22] = '"';
+SIMPLE_ESCAPE[0x5c] = "\\";
+SIMPLE_ESCAPE[0x2f] = "/";
+SIMPLE_ESCAPE[0x62] = "\b";
+SIMPLE_ESCAPE[0x66] = "\f";
+SIMPLE_ESCAPE[0x6e] = "\n";
+SIMPLE_ESCAPE[0x72] = "\r";
+SIMPLE_ESCAPE[0x74] = "\t";
+
+/**
+ * The width of the valid UTF-8 sequence that starts at `i` (a byte of 0x80 or more), or 0 when it is not valid, which
+ * is Go's utf8.DecodeRune answering U+FFFD of width 1. Overlongs, surrogates and anything past U+10FFFF are invalid.
+ */
+function utf8Width(b: Buffer, i: number): number {
+  const b0 = b[i] ?? 0;
+  const b1 = b[i + 1];
+  if (b1 === undefined || b1 < 0x80 || b1 > 0xbf) return 0;
+  if (b0 >= 0xc2 && b0 <= 0xdf) return 2;
+  const b2 = b[i + 2];
+  if (b0 >= 0xe0 && b0 <= 0xef) {
+    if ((b0 === 0xe0 && b1 < 0xa0) || (b0 === 0xed && b1 > 0x9f)) return 0;
+    return b2 !== undefined && b2 >= 0x80 && b2 <= 0xbf ? 3 : 0;
+  }
+  if (b0 >= 0xf0 && b0 <= 0xf4) {
+    if ((b0 === 0xf0 && b1 < 0x90) || (b0 === 0xf4 && b1 > 0x8f)) return 0;
+    const b3 = b[i + 3];
+    return b2 !== undefined && b2 >= 0x80 && b2 <= 0xbf && b3 !== undefined && b3 >= 0x80 && b3 <= 0xbf ? 4 : 0;
+  }
+  return 0;
+}
 
 /** Thrown inside the parser for an input that ended inside a value. */
 class Truncated extends Error {}
@@ -77,6 +122,7 @@ class Parser {
    */
   constructor(
     private readonly b: Buffer,
+    private readonly shape: Shape,
     private readonly eofIsSpace = false,
   ) {}
 
@@ -108,7 +154,10 @@ class Parser {
   }
 
   skipWhite(): void {
-    while (isWhite(this.peek())) this.i++;
+    const b = this.b;
+    let i = this.i;
+    for (let c = b[i]; c === 0x20 || c === 0x09 || c === 0x0a || c === 0x0d; c = b[i]) i++;
+    this.i = i;
   }
 
   atEnd(): boolean {
@@ -122,12 +171,18 @@ class Parser {
    * after a value is checked here.
    */
   value(): Value {
-    type Open = { kind: "object"; entries: (readonly [string, Value])[]; key: string } | { kind: "array" };
+    type Open =
+      | { kind: "object"; entries: (readonly [string, Value])[]; key: string | undefined; shape: Shape | undefined }
+      | { kind: "array" };
     const stack: Open[] = [];
     for (;;) {
-      // A value starts here.
+      // A value starts here. `want` is what the struct has for it: nothing when it is an array's element or the value of
+      // a key no field matches, and then it is read for its syntax only.
       this.skipWhite();
       const c = this.need();
+      const top0 = stack[stack.length - 1];
+      const want: FieldType | undefined =
+        top0 === undefined ? this.shape : top0.kind === "object" && top0.key !== undefined ? top0.shape?.[top0.key] : undefined;
       let v: Value | undefined;
       if (c === 0x7b || c === 0x5b) {
         if (stack.length >= MAX_NESTING_DEPTH) this.fail(c, "exceeded max depth");
@@ -136,56 +191,66 @@ class Parser {
         if (c === 0x7b) {
           if (this.need() === 0x7d) {
             this.i++;
-            v = { kind: "object", entries: [] };
+            v = EMPTY_OBJECT;
           } else {
-            stack.push({ kind: "object", entries: [], key: this.key() });
+            const shape = typeof want === "object" ? want : undefined;
+            stack.push({ kind: "object", entries: [], key: this.key(shape), shape });
             continue;
           }
         } else if (this.need() === 0x5d) {
           this.i++;
-          v = { kind: "array" };
+          v = EMPTY_ARRAY;
         } else {
           stack.push({ kind: "array" });
           continue;
         }
-      } else if (c === 0x22) v = { kind: "string", value: this.string() };
-      else if (c === 0x2d || isDigit(c)) v = { kind: "number", text: this.number() };
-      else if (c === 0x74) v = this.literal("true", { kind: "bool" });
-      else if (c === 0x66) v = this.literal("false", { kind: "bool" });
-      else if (c === 0x6e) v = this.literal("null", { kind: "null" });
+      } else if (c === 0x22) v = want === undefined ? (this.string(false), SKIPPED) : { kind: "string", value: this.string(true) };
+      else if (c === 0x2d || isDigit(c)) v = want === undefined ? (this.number(false), SKIPPED) : { kind: "number", text: this.number(true) };
+      else if (c === 0x74) v = this.literal("true", BOOL);
+      else if (c === 0x66) v = this.literal("false", BOOL);
+      else if (c === 0x6e) v = this.literal("null", NULL);
       else this.fail(c, "looking for beginning of value");
 
       // A value ended: hand it to the container it is in, and close containers as long as they end.
       for (;;) {
         const top = stack[stack.length - 1];
         if (top === undefined) return v;
-        if (top.kind === "object") top.entries.push([top.key, v]);
+        if (top.kind === "object" && top.key !== undefined) top.entries.push([top.key, v]);
         this.skipWhite();
         const next = this.need();
         this.i++;
         if (top.kind === "object") {
           if (next === 0x2c) {
-            top.key = this.key();
+            top.key = this.key(top.shape);
             break;
           }
           if (next !== 0x7d) this.fail(next, "after object key:value pair");
-          v = { kind: "object", entries: top.entries };
+          v = top.shape === undefined ? EMPTY_OBJECT : { kind: "object", entries: top.entries };
         } else {
           if (next === 0x2c) break;
           if (next !== 0x5d) this.fail(next, "after array element");
-          v = { kind: "array" };
+          v = EMPTY_ARRAY;
         }
         stack.pop();
       }
     }
   }
 
-  /** An object key and its colon. */
-  private key(): string {
+  /** An object key and its colon; the name of the field of `shape` it matches, if any. */
+  private key(shape: Shape | undefined): string | undefined {
     this.skipWhite();
     const q = this.need();
     if (q !== 0x22) this.fail(q, "looking for beginning of object key string");
-    const key = this.string();
+    let key: string | undefined;
+    if (shape === undefined) this.string(false);
+    else {
+      // A key of plain ASCII, of a length no field has, is no field's: passed over without being made a string.
+      const b = this.b;
+      let j = this.i + 1;
+      for (let x = b[j]; x !== undefined && x >= 0x20 && x < 0x80 && x !== 0x22 && x !== 0x5c; x = b[j]) j++;
+      if (b[j] === 0x22 && !matcherFor(shape).lengths.has(j - this.i - 1)) this.i = j + 1;
+      else key = matchField(shape, this.string(true));
+    }
     this.skipWhite();
     const colon = this.need();
     if (colon !== 0x3a) this.fail(colon, "after object key");
@@ -204,8 +269,22 @@ class Parser {
     return v;
   }
 
-  private number(): string {
+  private number(keep: boolean): string {
     const start = this.i;
+    // The common number: digits and nothing after them that a number goes on with. (Anything else takes the full path.)
+    if (!keep) {
+      const b = this.b;
+      let j = this.i;
+      let c = b[j];
+      if (c !== undefined && c >= 0x31 && c <= 0x39) {
+        do c = b[++j];
+        while (c !== undefined && c >= 0x30 && c <= 0x39);
+        if (c !== 0x2e && c !== 0x65 && c !== 0x45) {
+          this.i = j;
+          return "";
+        }
+      }
+    }
     if (this.peek() === 0x2d) {
       this.i++;
       const c = this.needIn("in numeric literal");
@@ -226,61 +305,72 @@ class Parser {
       if (!isDigit(c)) this.fail(c, "in exponent of numeric literal");
       while (isDigit(this.peek())) this.i++;
     }
-    return this.b.toString("latin1", start, this.i);
+    return keep ? this.b.toString("latin1", start, this.i) : "";
   }
 
-  /** A string literal, unquoted as Go's unquote does it. */
-  private string(): string {
+  /**
+   * A string literal, unquoted as Go's unquote does it. Linear: plain bytes are found by a scan and handed over a run
+   * at a time (one `toString` per run, never one append per character), and a non-ASCII sequence is checked as UTF-8
+   * the way Go's utf8.DecodeRune reads it, each byte of an invalid sequence becoming one U+FFFD.
+   */
+  private string(keep: boolean): string {
+    const b = this.b;
     this.i++; // the opening quote
     let out = "";
-    const latin1 = (from: number, to: number): string => this.b.toString("latin1", from, to);
+    let start = this.i; // where the run of bytes that go in as they are begins
     for (;;) {
+      let j = this.i;
+      while (j < b.length) {
+        const x = b[j] ?? 0;
+        if (x === 0x22 || x === 0x5c || x < 0x20 || x >= 0x80) break;
+        j++;
+      }
+      this.i = j;
       const c = this.need();
       if (c === 0x22) {
+        if (keep) out += b.toString("utf8", start, this.i);
         this.i++;
         return out;
       }
       if (c < 0x20) this.fail(c, "in string literal");
-      if (c === 0x5c) {
-        this.i++;
-        const e = this.need();
-        const simple: Record<number, string> = { 0x22: '"', 0x5c: "\\", 0x2f: "/", 0x62: "\b", 0x66: "\f", 0x6e: "\n", 0x72: "\r", 0x74: "\t" };
-        const s = simple[e];
-        if (s !== undefined) {
-          out += s;
+      if (c >= 0x80) {
+        const width = utf8Width(b, this.i);
+        if (width > 0) this.i += width;
+        else {
+          if (keep) out += b.toString("utf8", start, this.i) + "\ufffd";
           this.i++;
-          continue;
+          start = this.i;
         }
+        continue;
+      }
+      // A backslash.
+      if (keep) out += b.toString("utf8", start, this.i);
+      this.i++;
+      const e = this.need();
+      const s = SIMPLE_ESCAPE[e];
+      if (s !== undefined) {
+        if (keep) out += s;
+        this.i++;
+      } else {
         if (e !== 0x75) this.fail(e, "in string escape code");
         this.i++;
         const r = this.hex4();
         if (r >= 0xd800 && r < 0xe000) {
           // A surrogate: combined with an escaped low surrogate right after it, U+FFFD otherwise (Go's utf16.DecodeRune).
-          if (r < 0xdc00 && this.b[this.i] === 0x5c && this.b[this.i + 1] === 0x75) {
+          let pair = false;
+          if (r < 0xdc00 && b[this.i] === 0x5c && b[this.i + 1] === 0x75) {
             const save = this.i;
             this.i += 2;
             const r2 = this.hex4();
             if (r2 >= 0xdc00 && r2 < 0xe000) {
-              out += String.fromCodePoint(0x10000 + ((r - 0xd800) << 10) + (r2 - 0xdc00));
-              continue;
-            }
-            this.i = save;
+              if (keep) out += String.fromCodePoint(0x10000 + ((r - 0xd800) << 10) + (r2 - 0xdc00));
+              pair = true;
+            } else this.i = save;
           }
-          out += "�";
-          continue;
-        }
-        out += String.fromCharCode(r);
-        continue;
+          if (keep && !pair) out += "\ufffd";
+        } else if (keep) out += String.fromCharCode(r);
       }
-      if (c < 0x80) {
-        out += String.fromCharCode(c);
-        this.i++;
-        continue;
-      }
-      // UTF-8 as Go's utf8.DecodeRune reads it: each byte of an invalid sequence is one U+FFFD.
-      const [rune, width] = decodeRune(latin1(this.i, Math.min(this.i + 4, this.b.length)), 0);
-      out += String.fromCodePoint(rune);
-      this.i += width;
+      start = this.i;
     }
   }
 
@@ -298,8 +388,8 @@ class Parser {
 }
 
 /** `json.NewDecoder(body).Decode(&v)`'s read: the first value, the rest never looked at. */
-function decoderValue(body: Buffer): Value {
-  const p = new Parser(body);
+function decoderValue(body: Buffer, shape: Shape): Value {
+  const p = new Parser(body, shape);
   p.skipWhite();
   if (p.atEnd()) throw new GoJsonError("EOF");
   try {
@@ -311,8 +401,8 @@ function decoderValue(body: Buffer): Value {
 }
 
 /** `json.Unmarshal(data, &v)`'s read: exactly one value. */
-function unmarshalValue(data: Buffer): Value {
-  const p = new Parser(data, true);
+function unmarshalValue(data: Buffer, shape: Shape): Value {
+  const p = new Parser(data, shape, true);
   let v: Value;
   try {
     v = p.value();
@@ -344,6 +434,7 @@ export type Decoded<S extends Shape> = { -readonly [K in keyof S]: S[K] extends 
  * Go, go-vault-verdicts.json). Any other non-ASCII rune is kept, and can then never equal a field's folded name.
  */
 function foldName(s: string): string {
+  if (!/[\u0080-\uffff]/.test(s)) return s.toUpperCase(); // all ASCII
   let out = "";
   for (const ch of s) {
     const r = ch.codePointAt(0) ?? 0;
@@ -353,6 +444,43 @@ function foldName(s: string): string {
     else out += ch;
   }
   return out;
+}
+
+interface Matcher {
+  readonly exact: ReadonlyMap<string, string>;
+  readonly folded: ReadonlyMap<string, string>;
+  readonly lengths: ReadonlySet<number>;
+}
+const matchers = new WeakMap<Shape, Matcher>();
+
+/**
+ * The field of `shape` that object key `key` is for, or undefined: the field named exactly so, else the first whose
+ * folded name is the key's folded name (Go's order). A fold keeps the length (one UTF-16 unit for one), so a key of a
+ * length no field has is turned away without being folded.
+ */
+function matcherFor(shape: Shape): Matcher {
+  let m = matchers.get(shape);
+  if (m === undefined) {
+    const exact = new Map<string, string>();
+    const folded = new Map<string, string>();
+    const lengths = new Set<number>();
+    for (const name of Object.keys(shape)) {
+      exact.set(name, name);
+      const f = foldName(name);
+      if (!folded.has(f)) folded.set(f, name);
+      lengths.add(name.length);
+    }
+    m = { exact, folded, lengths };
+    matchers.set(shape, m);
+  }
+  return m;
+}
+
+function matchField(shape: Shape, key: string): string | undefined {
+  const m = matcherFor(shape);
+  const hit = m.exact.get(key);
+  if (hit !== undefined) return hit;
+  return m.lengths.has(key.length) ? m.folded.get(foldName(key)) : undefined;
 }
 
 function zero<S extends Shape>(shape: S): Decoded<S> {
@@ -387,11 +515,9 @@ function goStructType(shape: Shape): string {
  */
 function fill(v: Value, shape: Shape, into: Record<string, unknown>, path: string, structName: string): string | null {
   let first: string | null = null;
-  const names = Object.keys(shape);
   if (v.kind !== "object") return null;
-  for (const [key, value] of v.entries) {
-    const name = names.find((n) => n === key) ?? names.find((n) => foldName(n) === foldName(key));
-    if (name === undefined) continue;
+  // The parser kept the entries a field matched, under the field's name.
+  for (const [name, value] of v.entries) {
     const type = shape[name];
     if (type === undefined) continue;
     const where = `${path}${path === "" ? "" : "."}${name}`;
@@ -403,7 +529,8 @@ function fill(v: Value, shape: Shape, into: Record<string, unknown>, path: strin
       if (value.kind === "string") into[name] = value.value;
       else error = field(typeOf(value), "string");
     } else if (type === "int") {
-      const n = value.kind === "number" && /^-?[0-9]+$/.test(value.text) ? BigInt(value.text) : null;
+      // Longer than any int64 (19 digits and a sign) is out of range, without the BigInt of a megabyte of digits.
+      const n = value.kind === "number" && value.text.length <= 20 && /^-?[0-9]+$/.test(value.text) ? BigInt(value.text) : null;
       if (n !== null && n >= MIN_INT64 && n <= MAX_INT64) into[name] = n;
       else error = field(value.kind === "number" ? `number ${value.text}` : typeOf(value), "int");
     } else if (value.kind !== "object") {
@@ -426,23 +553,10 @@ function decodeInto<S extends Shape>(v: Value, shape: S, typeName: string): Deco
 
 /** `json.NewDecoder(body).Decode(&v)` into a struct of `shape`. Throws GoJsonError. */
 export function decodeFirst<S extends Shape>(body: Buffer, shape: S, typeName: string): Decoded<S> {
-  return decodeInto(decoderValue(body), shape, typeName);
+  return decodeInto(decoderValue(body, shape), shape, typeName);
 }
 
 /** `json.Unmarshal(data, &v)` into a struct of `shape`. Throws GoJsonError. */
 export function unmarshal<S extends Shape>(data: Buffer, shape: S, typeName: string): Decoded<S> {
-  return decodeInto(unmarshalValue(data), shape, typeName);
-}
-
-/**
- * Whether the first JSON value of `body` is complete: false when the decoder would need more input. Lets a caller read
- * a body only as far as Go's Decoder would.
- */
-export function firstValueComplete(body: Buffer): boolean {
-  try {
-    decoderValue(body);
-    return true;
-  } catch (err) {
-    return !(err instanceof GoJsonError && (err.message === "EOF" || err.message === "unexpected EOF"));
-  }
+  return decodeInto(unmarshalValue(data, shape), shape, typeName);
 }
