@@ -10,8 +10,9 @@ Step 7b ported Clerk JWT verification (`src/jwt/verify.ts`, `jose`) and `POST /a
 (`src/introspection.ts`, `controllers/introspect.controller.ts`). Step 7c ported the vault: `GET /auth/v1/token`, Restore
 Token and Reset Agent (`src/vault.ts`, `controllers/vault.controller.ts`, `operator.controller.ts`), the poller
 (`src/poller.ts`), the SpaceTraders client (`src/spacetraders/client.ts`) and the row's writes (`src/db/credential.ts`).
-The operator routes call the introspection verifier in-process (decision 21: one verification code path). Not ported,
-and deliberately unregistered so the contract skip list covers them: machine tokens (7d).
+The operator routes call the introspection verifier in-process (decision 21: one verification code path). Step 7d
+ported `POST /auth/v1/m2m-token` (decision 22: `src/m2m/`, `controllers/m2m.controller.ts`). Every route is ported: the
+contract skip list is empty.
 
 ## Commands (from `ts/`)
 
@@ -76,6 +77,9 @@ root like the Go image: `/data/auth.db` is root-owned.
 | `parseFlexibleTime` (RFC 3339, else a bare date), `Time.Equal` to the nanosecond | `src/spacetraders/client.ts`, `src/goTime.ts` | `vaultParity.test.ts`, 40 dates |
 | the poller: cadence, forced polls and their 10 s cooldown, wipe detection, re-registration, APP_TOKEN_EXPIRED | `src/poller.ts`, `src/state/machine.ts` | `poller.test.ts` on a fake clock with a stubbed st-gateway; contract `poller.test.ts` |
 | the token route, the session gate, Restore Token, Reset Agent | `src/vault.ts` | `vault.test.ts`; contract `vault.test.ts`, `register.test.ts` |
+| M2M: `cacheEntryFrom`, the decode of Clerk's answer (`encoding/json` field folding, first value, 64 KiB), `ProxyFromEnvironment` | `src/m2m/token.ts`, `goJson.ts`, `clerk.ts`, `proxy.ts` | `m2mGoParity.test.ts` against Go's recorded verdicts (80 tokens, 58 bodies, 1140 proxy decisions) |
+| M2M: the per-caller cache (single flight, detached mint, refresh at half life, 10 s backoff, 10 s timeout, expiry) | `src/m2m/cache.ts` | `m2mCache.test.ts` on a fake clock; contract `m2m-clerk*.test.ts` |
+| M2M: the route, both trust anchors, the Clerk request, redirects, the log | `src/m2m/service.ts`, `dev.ts`, `clerk.ts` | `m2m.test.ts` against a Clerk stub on a socket; contract `m2m-*.test.ts`, `startup.test.ts` |
 
 Never `url.Parse` through WHATWG `URL`, never `trim()` for Go's TrimSpace, never `createPublicKey(pem)` directly: each
 answers differently from Go on inputs the contract pins. Never `URLSearchParams` or `express.urlencoded` for the
@@ -84,7 +88,11 @@ joins repeats), and never `jwtVerify` without `verify.ts`'s Go checks around it 
 1e400 that golang-jwt refuses, and judges a fractional `exp` up to a second longer). Never `JSON.parse` for an operator
 route's body or a SpaceTraders answer (`src/goJson.ts`: Go ignores what follows the first value of a body, folds key
 case, keeps the last duplicate, and refuses `1.0` for an int), and never log an `UpstreamError`'s body or an error's
-text other than through `describeError` (upstream's body can hold anything).
+text other than through `describeError` (upstream's body can hold anything). Never `JSON.parse` alone for Clerk's
+answer or a minted token's payload either (`m2m/goJson.ts`, the same rules for the mint's two readers; the two
+modules are separate, see "Follow-ups"), never `fetch` for the mint (it follows redirects, and the Machine Secret Key
+must not), and never a request signal on the mint (it is detached: only its own 10 s timeout cancels it). The vault's
+SpaceTraders calls do use `fetch`, with `redirect: "manual"` and Go's redirect policy by hand.
 
 ## Deliberate differences from Go
 
@@ -108,6 +116,9 @@ text other than through `describeError` (upstream's body can hold anything).
   Go has none; no startup refusal is added in the port, a follow-up after cutover); a present `iat` that is not a number;
   claims that are not valid UTF-8 (Go substitutes U+FFFD); a fractional `nbf` inside the last second of the leeway; an
   `nbf` so large that Go's int64 conversion wraps it into the past. None is producible by Clerk.
+* Machine tokens (7d): the mint request is HTTP/1.1 without Go's `User-Agent: Go-http-client/1.1` and
+  `Accept-Encoding: gzip` (Go would also try HTTP/2 to api.clerk.com); a `socks5://` proxy (which Go dials) fails the
+  mint instead; a transport failure is logged by its error code, not Go's error text. The proxy choice itself is Go's.
 
 * The vault (7c):
   * Polls and operator writes never interleave: scheduled, forced and post-registration polls, Restore Token and Reset
@@ -132,6 +143,14 @@ text other than through `describeError` (upstream's body can hold anything).
   * `updated_at` and `occurred_at` are written in UTC (Go: the local zone, UTC in the image). Nothing reads them.
   * A non-ASCII account token is sent as its UTF-8 bytes, as Go sends it; a control character fails the call before it
     is sent, as in Go.
+
+## Follow-ups
+
+* Two Go `encoding/json` readers: `src/goJson.ts` (the vault: Decoder and Unmarshal into string/int/nested-struct
+  shapes, an iterative parser with Go's error wording) and `m2m/goJson.ts` (the mint: an incremental scanner for a
+  64 KiB-limited stream, string and float-pointer fields). Their scanning, UTF-8 and key folding are the same rules
+  written twice; one module serving both shapes, held to both verdict files, is the cleanup. Not done in 7c because
+  their interfaces differ (incremental "more" scanning, pointer fields) and each is pinned by its own Go corpus.
 
 ## Invariants
 

@@ -1,9 +1,8 @@
 # Contract cases the TypeScript service does not pass yet: every case of a route that is not ported.
 # Step 7a ported the health and status routes, CORS, the router table and the startup refusals; 7b ported
-# POST /auth/v1/introspect (every introspection case, the fixture included, is off this list); 7c ported the vault
-# (GET /auth/v1/token, register, restore, the poller, the Clerk session gate: every case of those is off this list).
-# What is listed below arrives with 7d (machine tokens), after which the list is empty. A case of a describe that is
-# partly ported is listed by its full name.
+# POST /auth/v1/introspect (every introspection case, the fixture included); 7c ported the vault (GET /auth/v1/token,
+# register, restore, the poller, the Clerk session gate) and 7d POST /auth/v1/m2m-token. Every route is ported, so the
+# list is empty, and must stay so: a new pattern here would be a route the TypeScript service lost.
 #
 # One JavaScript regular expression per line, handed to the judge in scripts/run-contract.cjs, matched like
 # `node --test --test-skip-pattern`: against the test's name with its enclosing describe names in front, joined by
@@ -13,19 +12,3 @@
 #
 # scripts/run-contract.cjs refuses a run whose numbers do not match contract-skip.expected.
 
-^the 10 s backoff after a failed mint$
-^the mint timeout$
-^a token past its exp$
-^refresh at half the lifetime$
-^what it asks Clerk$
-^single flight and the cache$
-^what makes a minted token unusable \(503, nothing cached, one Clerk call\)$
-^the caller table$
-^the secret gate$
-^which callers are enabled$
-^tokens only introspect when the dev key is the verification key$
-^OPTIONS and CORS carries CORS on handler responses of every status, and on none of the router's own 404/405/301$
-^the M2M mint table is validated at startup has nothing to collide with when there is no introspection secret$
-^settings that leave the service running in a fail-closed state with no M2M callers configured the mint route rejects everyone and the rest works$
-^accepted spellings of keys DEV_M2M_SIGNING_KEY_FILE as PKCS#8 or PKCS#1 private key$
-^log hygiene, production mode$

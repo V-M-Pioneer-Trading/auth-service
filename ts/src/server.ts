@@ -3,7 +3,7 @@ import type { DatabaseSync } from "node:sqlite";
 import express, { type ErrorRequestHandler, type Request, type RequestHandler } from "express";
 
 import { ConfigError, loadConfig, type Config } from "./config";
-import { CLOCK_LOCAL, CREDENTIALS_LOCAL, INTROSPECTION_LOCAL, VAULT_LOCAL } from "./controllers/support";
+import { CLOCK_LOCAL, CREDENTIALS_LOCAL, INTROSPECTION_LOCAL, M2M_LOCAL, VAULT_LOCAL } from "./controllers/support";
 import { sqliteCredentialStore, type CredentialStore } from "./db/credential";
 import { openDatabase } from "./db/database";
 import { RegisterRoutes } from "./generated/routes";
@@ -12,6 +12,7 @@ import { corsHeaders } from "./http/cors";
 import { goJson, sendText, TextAnswer } from "./http/json";
 import type { IntrospectionDeps } from "./introspection";
 import { createVerifier } from "./jwt/verify";
+import { createM2MService, REJECT_EVERY_CALLER, type M2MService } from "./m2m/service";
 import { decodedPathOf, muxCompat, noHead, terminalAnswer } from "./http/muxCompat";
 import { stderrLog, visible, type Logger } from "./log";
 import { nodeTooOld } from "./runtime";
@@ -95,6 +96,8 @@ export interface AppDeps {
   readonly credentials: CredentialStore;
   /** POST /auth/v1/introspect's secret and verifier. Without them the route refuses every caller (no secret). */
   readonly introspection?: IntrospectionDeps;
+  /** POST /auth/v1/m2m-token (decision 22). Without it the route is mounted and every caller is unknown (401). */
+  readonly m2m?: M2MService;
   /** Milliseconds since the epoch; the wall clock if not given. */
   readonly now?: () => number;
   /** One line per request, like the Go logging middleware; off unless given. */
@@ -124,6 +127,7 @@ export function createApp(deps: AppDeps): express.Express {
   app.locals[CREDENTIALS_LOCAL] = deps.credentials;
   app.locals[CLOCK_LOCAL] = deps.now ?? Date.now;
   app.locals[INTROSPECTION_LOCAL] = deps.introspection ?? { secret: "", verifier: () => Promise.resolve(null) };
+  app.locals[M2M_LOCAL] = deps.m2m ?? REJECT_EVERY_CALLER;
   app.locals[VAULT_LOCAL] = deps.vault ?? CLOSED_VAULT;
   app.disable("x-powered-by");
   app.set("etag", false);
@@ -175,8 +179,10 @@ export function main(env: NodeJS.ProcessEnv = process.env): void {
   }
   let config: Config;
   let db: DatabaseSync;
+  let m2m: M2MService;
   try {
     config = loadConfig(env, stderrLog);
+    m2m = createM2MService(config.m2m, config.sharedSecret, config.introspectionSecret, { log: stderrLog, env });
     db = openDatabase(config.sqlitePath, stderrLog);
   } catch (err) {
     console.error(err instanceof ConfigError ? err.message : err instanceof Error ? err.message : err);
@@ -189,6 +195,7 @@ export function main(env: NodeJS.ProcessEnv = process.env): void {
     corsAllowedOrigin: config.corsAllowedOrigin,
     credentials: sqliteCredentialStore(db),
     introspection: { secret: config.introspectionSecret, verifier: createVerifier({ key: config.clerkJwtKey, issuer: config.clerkIssuer }) },
+    m2m,
     log: stderrLog,
     vault: vault.deps,
   });

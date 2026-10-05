@@ -1,0 +1,201 @@
+// Records what the Go service's machine-token code answers on the corpus of src/testSupport/m2mCases.ts (Go 1.22.4).
+// cacheEntryFrom and the decode of Clerk's answer are src/api/m2m.go's, verbatim but for the names; the proxy choice is
+// golang.org/x/net/http/httpproxy at the revision Go 1.22.4 vendors (net/http's ProxyFromEnvironment is that code
+// reading os.Getenv once, so FromEnvironment's getEnvAny is reproduced on each case's map).
+//
+//	go run . input.json > go-m2m-verdicts.json
+//
+// Output: the sha256 of the input file (the test regenerates the input and checks it), then the verdicts in case
+// order. A token longer than 200 bytes is written as its sha256.
+package main
+
+import (
+	"bytes"
+	"crypto/sha256"
+	"encoding/base64"
+	"encoding/hex"
+	"encoding/json"
+	"errors"
+	"fmt"
+	"io"
+	"net/url"
+	"os"
+	"strings"
+	"time"
+
+	"golang.org/x/net/http/httpproxy"
+)
+
+type input struct {
+	NowMs  int64               `json:"nowMs"`
+	Tokens []string            `json:"tokens"`
+	Bodies []string            `json:"bodies"`
+	Envs   []map[string]string `json:"envs"`
+	URLs   []string            `json:"urls"`
+}
+
+type cachedM2MToken struct {
+	token     string
+	expiresAt time.Time
+	refreshAt time.Time
+}
+
+const m2mMinLifetime = 60
+const m2mMaxLifetime = 7 * 24 * 60 * 60
+const maxJWTSeconds = float64(1 << 53)
+
+// cacheEntryFrom: src/api/m2m.go, verbatim.
+func cacheEntryFrom(token string, now time.Time) (cachedM2MToken, error) {
+	parts := strings.Split(token, ".")
+	if len(parts) != 3 {
+		return cachedM2MToken{}, errors.New("minted token is not a JWT")
+	}
+	raw, err := base64.RawURLEncoding.DecodeString(parts[1])
+	if err != nil {
+		return cachedM2MToken{}, fmt.Errorf("minted token payload: %w", err)
+	}
+	var claims struct {
+		Iat *float64 `json:"iat"`
+		Exp *float64 `json:"exp"`
+	}
+	if err := json.Unmarshal(raw, &claims); err != nil {
+		return cachedM2MToken{}, fmt.Errorf("minted token payload: %w", err)
+	}
+	if claims.Iat == nil || claims.Exp == nil {
+		return cachedM2MToken{}, errors.New("minted token has no iat/exp")
+	}
+	for _, v := range []float64{*claims.Iat, *claims.Exp} {
+		if !(v >= 0 && v <= maxJWTSeconds) {
+			return cachedM2MToken{}, errors.New("minted token has an iat/exp out of range")
+		}
+	}
+	iat, exp := int64(*claims.Iat), int64(*claims.Exp)
+	if exp-iat < m2mMinLifetime {
+		return cachedM2MToken{}, fmt.Errorf("minted token lives %d s, under the %d s minimum", exp-iat, m2mMinLifetime)
+	}
+	if exp-iat > m2mMaxLifetime {
+		return cachedM2MToken{}, fmt.Errorf("minted token lives %d s, over the %d s maximum", exp-iat, m2mMaxLifetime)
+	}
+	if exp <= now.Unix() {
+		return cachedM2MToken{}, errors.New("minted token is already expired")
+	}
+	refreshAt := iat + (exp-iat)/2
+	if refreshAt <= now.Unix() {
+		return cachedM2MToken{}, errors.New("minted token is already past its refresh point")
+	}
+	return cachedM2MToken{
+		token:     token,
+		expiresAt: time.Unix(exp, 0),
+		refreshAt: time.Unix(refreshAt, 0),
+	}, nil
+}
+
+// decodeAnswer: the end of clerkMinter in src/api/m2m.go, verbatim, on a body that ends where its bytes end.
+func decodeAnswer(body io.Reader) (string, error) {
+	var out struct {
+		Token string `json:"token"`
+	}
+	if err := json.NewDecoder(io.LimitReader(body, 64<<10)).Decode(&out); err != nil {
+		return "", fmt.Errorf("POST /m2m_tokens: %w", err)
+	}
+	if out.Token == "" {
+		return "", errors.New("POST /m2m_tokens: response carried no token")
+	}
+	return out.Token, nil
+}
+
+func getEnvAny(env map[string]string, names ...string) string {
+	for _, n := range names {
+		if val := env[n]; val != "" {
+			return val
+		}
+	}
+	return ""
+}
+
+func main() {
+	raw, err := os.ReadFile(os.Args[1])
+	if err != nil {
+		panic(err)
+	}
+	var in input
+	if err := json.Unmarshal(raw, &in); err != nil {
+		panic(err)
+	}
+	now := time.UnixMilli(in.NowMs)
+	sum := sha256.Sum256(raw)
+	out := map[string]interface{}{"inputSha256": hex.EncodeToString(sum[:])}
+
+	tokens := []string{}
+	for _, t := range in.Tokens {
+		e, err := cacheEntryFrom(t, now)
+		verdict := "refused"
+		if err == nil {
+			verdict = fmt.Sprintf("ok %d %d", e.expiresAt.Unix(), e.refreshAt.Unix())
+		}
+		tokens = append(tokens, verdict)
+	}
+	out["tokens"] = tokens
+
+	bodies := []string{}
+	for _, b := range in.Bodies {
+		body, err := base64.StdEncoding.DecodeString(b)
+		if err != nil {
+			panic(err)
+		}
+		tok, err := decodeAnswer(bytes.NewReader(body))
+		verdict := "refused"
+		if err == nil {
+			if len(tok) <= 200 {
+				verdict = "token " + base64.StdEncoding.EncodeToString([]byte(tok))
+			} else {
+				h := sha256.Sum256([]byte(tok))
+				verdict = "token sha256:" + hex.EncodeToString(h[:])
+			}
+		}
+		bodies = append(bodies, verdict)
+	}
+	out["bodies"] = bodies
+
+	proxies := [][]string{}
+	for _, env := range in.Envs {
+		cfg := &httpproxy.Config{
+			HTTPProxy:  getEnvAny(env, "HTTP_PROXY", "http_proxy"),
+			HTTPSProxy: getEnvAny(env, "HTTPS_PROXY", "https_proxy"),
+			NoProxy:    getEnvAny(env, "NO_PROXY", "no_proxy"),
+			CGI:        env["REQUEST_METHOD"] != "",
+		}
+		fn := cfg.ProxyFunc()
+		row := []string{}
+		for _, u := range in.URLs {
+			parsed, err := url.Parse(u)
+			if err != nil {
+				panic(err)
+			}
+			p, err := fn(parsed)
+			switch {
+			case err != nil:
+				row = append(row, "refused")
+			case p == nil:
+				row = append(row, "direct")
+			default:
+				user, pass := "-", "-"
+				if p.User != nil {
+					user = "u=" + p.User.Username()
+					if pw, ok := p.User.Password(); ok {
+						pass = "p=" + pw
+					}
+				}
+				row = append(row, fmt.Sprintf("proxy %s %s %s %s", p.Scheme, p.Host, user, pass))
+			}
+		}
+		proxies = append(proxies, row)
+	}
+	out["proxies"] = proxies
+
+	js, err := json.MarshalIndent(out, "", " ")
+	if err != nil {
+		panic(err)
+	}
+	os.Stdout.Write(append(js, 10))
+}
