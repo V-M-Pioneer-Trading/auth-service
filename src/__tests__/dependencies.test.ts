@@ -462,3 +462,35 @@ describe("local packages", () => {
     expect(problems(b.pkg, b.lock)).toMatch(/is a link/);
   });
 });
+
+describe("the lockfile dev flag (agent-service#58): the snapshot section is derived from it, so a lockfile-only edit of the flag fails", () => {
+  it("fails when the eslint-config entry loses dev: true (npm ci --omit=dev would install it)", () => {
+    const { pkg, lock } = fresh();
+    const e = entry(lock, `node_modules/${ESLINT_CONFIG}`);
+    expect(e.dev).toBe(true);
+    delete e.dev;
+    const out = problems(pkg, lock);
+    expect(out).toContain(`package-lock.json gained ${ESLINT_CONFIG}@1.0.0 [runtime], which is not in dependency-snapshot.txt`);
+    expect(out).toContain(`dependency-snapshot.txt lists ${ESLINT_CONFIG}@1.0.0 [dev], which package-lock.json no longer has`);
+  });
+
+  it("fails when a registry dev package loses dev: true", () => {
+    const { pkg, lock } = fresh();
+    const e = entry(lock, "node_modules/typescript");
+    expect(e.dev).toBe(true);
+    delete e.dev;
+    const out = problems(pkg, lock);
+    expect(out).toMatch(/package-lock\.json gained typescript@[0-9.]+ \[runtime\]/);
+    expect(out).toMatch(/dependency-snapshot\.txt lists typescript@[0-9.]+ \[dev\]/);
+  });
+
+  it("fails when a runtime package gains dev: true (the image would lack it)", () => {
+    const { pkg, lock } = fresh();
+    const e = entry(lock, "node_modules/express");
+    expect(e.dev).toBeUndefined();
+    e.dev = true;
+    const out = problems(pkg, lock);
+    expect(out).toMatch(/package-lock\.json gained express@[0-9.]+ \[dev\]/);
+    expect(out).toMatch(/dependency-snapshot\.txt lists express@[0-9.]+ \[runtime\]/);
+  });
+});
