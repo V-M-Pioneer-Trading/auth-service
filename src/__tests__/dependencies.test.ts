@@ -469,6 +469,7 @@ describe("the lockfile dev flag (agent-service#58): the snapshot section is deri
     const e = entry(lock, `node_modules/${ESLINT_CONFIG}`);
     expect(e.dev).toBe(true);
     const v = e.version ?? "";
+    expect(v).toMatch(/^d+.d+.d+$/);
     delete e.dev;
     const out = problems(pkg, lock);
     expect(out).toContain(`package-lock.json gained ${ESLINT_CONFIG}@${v} [runtime], which is not in dependency-snapshot.txt`);
