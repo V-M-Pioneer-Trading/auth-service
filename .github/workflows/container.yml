@@ -259,9 +259,14 @@ jobs:
         run: |
           # --timeout-seconds: a command the host has not picked up within 10
           # minutes is dropped instead of running later, outside the queue.
+          # imageTag: deploy the image this run built and pushed (the
+          # type=sha,format=long tag above), not whatever :latest points at
+          # when the host pulls (meta#89). The document declares it since
+          # infrastructure#102.
           command_id=$(aws ssm send-command \
             --document-name "$DOCUMENT" \
             --targets "Key=InstanceIds,Values=$INSTANCE_ID" \
+            --parameters imageTag=sha-${{ github.sha }} \
             --timeout-seconds 600 \
             --region eu-central-1 \
             --query Command.CommandId --output text)
