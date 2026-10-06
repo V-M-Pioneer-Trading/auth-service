@@ -109,6 +109,10 @@ function Write-AutopilotAdvice($Before, $After) {
     Write-Host '  with actor system:restart and the persisted row (restoredFrom); an autopilot_resumed_in_shadow anomaly means it was live.'
   } elseif ($Before.Status -in 'armed', 'paused' -and $Before.Mode -eq 'live') {
     Write-Host "  WARNING: it was $($Before.Status) LIVE. The restart brings it back $($Before.Status) in SHADOW and raises the anomaly autopilot_resumed_in_shadow."
+    if ($Before.Status -eq 'paused') {
+      Write-Host "  It comes back PAUSED, and the probe's hard gate needs it ARMED: before the probe, arm it in shadow (it trades nothing):"
+      Write-ArmCommand 'shadow'
+    }
     Write-Host '  The probe takes the shadow evidence (planner_shadow_assignment). Re-arm it live only once the probe and the host check are green:'
     Write-ArmCommand 'live'
     if ($Before.Status -eq 'paused') { Write-Host '    It was paused: arming live resumes trading. To leave it paused, arm live and then Pause (POST /api/automation/v1/autopilot/pause).' }
