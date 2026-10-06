@@ -59,9 +59,16 @@
 // THE MINT PATH. automation-service caches its machine token for 24 h and refreshes it at 12 h, so a probe that runs while
 // it still holds a token Go minted proves nothing about the TypeScript mint. The procedure restarts automation-service
 // after the rc deploy (its cache is empty, its next call mints through POST /auth/v1/m2m-token), and the cycle check
-// requires a planner_shadow_assignment at or after SINCE (the restart): each one follows an M2M-authenticated read of
-// agent-service, i.e. a token this auth-service minted AND introspected active. The host checklist's hard gate adds the
-// mint count and the absence of any 401/403/503 in automation-service's log since the restart.
+// requires, at or after SINCE (the restart), the cycle evidence of the mode the autopilot reports (CYCLE_EVIDENCE below):
+// each such event follows an M2M-authenticated read of agent-service, i.e. a token this auth-service minted AND
+// introspected active. The host checklist's hard gate adds the mint count and the absence of any 401/403/503 in
+// automation-service's log since the restart.
+//
+// THE RESTART AND THE AUTOPILOT (automation-service#46, autopilot-design decision 13). automation-service persists its
+// lifecycle: after the restart an armed or paused autopilot comes back with the same status but ALWAYS in shadow mode
+// (actor system:restart); a live one also raises the anomaly autopilot_resumed_in_shadow. A disarmed one stays disarmed.
+// So right after the restart the evidence is planner_shadow_assignment, unless the owner has re-armed live since.
+// cutover-deploy-rc.ps1 records the mode before the restart and prints how to re-arm it.
 //
 // NOT probed: ai-service (parked, not deployed; its M2M path is automation-service's, which the cycle check and the host
 // checklist cover).
@@ -75,10 +82,37 @@ const GARBAGE = "probe-garbage-not-a-token";
 const FORGED = "eyJhbGciOiJub25lIiwidHlwIjoiSldUIn0.eyJzdWIiOiJwcm9iZSIsInNjb3BlIjoiYWdlbnQ6cmVzZXQifQ.";
 const PROBE_ID = "PROBE-NOT-A-REAL-ID";
 const RESET_SCOPE = "agent:reset";
-// What a healthy automation cycle leaves in its public event log. The autopilot runs armed in SHADOW mode for the cutover,
-// where planner_shadow_assignment is the proof (each one follows an M2M-authenticated read of agent-service).
-// agent_credits_snapshot is written only in live mode and is not what this probe waits for.
-const CYCLE_EVENT = "planner_shadow_assignment";
+// The events that mean one automation cycle read agent-service with its machine token, by the mode the autopilot reports
+// (automation-service src/scheduler.ts and src/anomalyScheduler.ts):
+//   shadow: planner_shadow_assignment. runShadowCycle writes one per tick, after GET /ships/{symbol} on agent-service.
+//   live:   agent_credits_snapshot (maybeSnapshotCredits: GET /agent on agent-service, every anomaly tick while armed
+//           live) or planner_assignment (assignTarget, after GET /ships/{symbol}; only when the ship is idle).
+// Shadow writes no agent_credits_snapshot and live no planner_shadow_assignment: only the reported mode's events count.
+export const CYCLE_EVIDENCE = Object.freeze({ shadow: ["planner_shadow_assignment"], live: ["agent_credits_snapshot", "planner_assignment"] });
+// How to arm. A hint only: this script never calls a state-changing automation route with a valid token.
+const ARM_HINT =
+  'arm it in the dashboard\'s autopilot panel (pick the mode, Arm), or POST /api/automation/v1/autopilot/arm {"mode":"shadow"} with a fleet:control session (shadow is enough and trades nothing; {"mode":"live"} trades)';
+
+/**
+ * The automation-cycle verdict, a pure function of what the public routes answered: status and mode are
+ * GET /autopilot/status's members as found, types the event types at or after SINCE. Only an armed autopilot runs a
+ * cycle (a paused one starts nothing new). Returns { ok, detail }.
+ */
+export function cycleVerdict(status, mode, types) {
+  if (status !== "armed") {
+    const was = status === "paused" ? `paused (${mode ?? "no mode"})` : String(status);
+    return {
+      ok: false,
+      detail: `autopilot is ${was}, not armed, so no cycle runs and the mint path is unproven: ${ARM_HINT}. A restart does not disarm it (automation-service#46: armed or paused comes back so, in shadow), so this is how it was left`,
+    };
+  }
+  const wanted = mode === "live" || mode === "shadow" ? CYCLE_EVIDENCE[mode] : null;
+  if (wanted === null) return { ok: false, detail: `autopilot is armed in mode ${String(mode)}, neither live nor shadow: no known event proves its cycle` };
+  if (types.some((t) => wanted.includes(t))) return { ok: true, detail: `armed (${mode})` };
+  const other = CYCLE_EVIDENCE[mode === "live" ? "shadow" : "live"].filter((t) => types.includes(t));
+  const note = other.length > 0 ? ` (the ${other.join(", ")} in the window predate a mode switch or a restart; a restart resumes a live autopilot in shadow, automation-service#46)` : "";
+  return { ok: false, detail: `armed (${mode}) but no ${wanted.join(" or ")} event${note}` };
+}
 // Event types that mean the cycle broke (the *_error types) or an action failed.
 const ERROR_TYPES = new Set(["mining_tick_error", "contract_discovery_error", "observation_write_error"]);
 const WARN_TYPES = new Set(["mining_task_failed"]);
@@ -520,13 +554,13 @@ export async function run(argv, env, write = (line) => process.stdout.write(line
 
   // [one healthy automation cycle], from automation-service's public event log. Names and times only. Its M2M token is
   // minted by auth-service (POST /auth/v1/m2m-token), and every read it makes of agent-service is introspected by it.
-  check("automation cycle (M2M mint + introspection)", "HARD GATE: automation-service (restarted at SINCE) is armed and logs a planner_shadow_assignment since SINCE: its freshly minted M2M token was introspected active", async () => {
+  check("automation cycle (M2M mint + introspection)", "HARD GATE: automation-service (restarted at SINCE) is armed and logs its mode's cycle evidence since SINCE (shadow: planner_shadow_assignment; live: agent_credits_snapshot or planner_assignment): its freshly minted M2M token was introspected active", async () => {
     const status = await call("GET", "/api/automation/v1/autopilot/status");
     expectStatus(status, 200);
     expectJson(status);
     const lifecycle = typeof status.json.status === "string" ? status.json.status : "(no status member)";
-    const mode = typeof status.json.mode === "string" ? status.json.mode : "none";
-    if (lifecycle !== "armed") fail(`autopilot is ${lifecycle}, not armed, so no cycle runs and the mint path is unproven: arm it in SHADOW mode (the owner's call, with the fleet:control token) before the probe`);
+    const mode = typeof status.json.mode === "string" ? status.json.mode : null;
+    if (lifecycle !== "armed") fail(cycleVerdict(lifecycle, mode, []).detail);
     const res = await call("GET", "/api/automation/v1/autopilot/events?limit=200");
     expectStatus(res, 200);
     expectJson(res);
@@ -537,12 +571,13 @@ export async function run(argv, env, write = (line) => process.stdout.write(line
     const summary = Object.entries(count).sort().map(([t, n]) => `${t}x${n}`).join(" ") || "(none)";
     const errors = recent.filter((e) => ERROR_TYPES.has(e.type));
     if (errors.length > 0) fail(`error events since SINCE: ${summary}`);
-    const proof = recent.filter((e) => e.type === CYCLE_EVENT);
-    if (proof.length === 0) {
-      fail(`armed (${mode}) but no ${CYCLE_EVENT} since ${new Date(sinceMs).toISOString()} (SINCE must be the automation-service restart time): ${summary}. Wait for a planner cycle, then run again`);
+    const verdict = cycleVerdict(lifecycle, mode, recent.map((e) => e.type));
+    if (!verdict.ok) {
+      fail(`${verdict.detail} since ${new Date(sinceMs).toISOString()} (SINCE must be the automation-service restart time): ${summary}. Wait for a planner cycle, then run again`);
     }
     const warn = recent.filter((e) => WARN_TYPES.has(e.type)).length;
-    return `armed (${mode}); events since SINCE: ${summary}${warn > 0 ? `; NOTE ${warn} action failure event(s): read them on the host` : ""}`;
+    const resumed = mode === "shadow" ? "; NOTE a restart resumes a live autopilot in shadow (automation-service#46): if it was live, re-arm it live once the cutover is green (cutover-deploy-rc.ps1 printed how)" : "";
+    return `${verdict.detail}; events since SINCE: ${summary}${warn > 0 ? `; NOTE ${warn} action failure event(s): read them on the host` : ""}${resumed}`;
   }, { needs: [] });
 
   // ---- the owner's checklist: what no outside caller can see -------------------------------------

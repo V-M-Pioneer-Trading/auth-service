@@ -24,11 +24,22 @@ type Quirk =
   | "validation-skipped"
   | "status-leaks"
   | "other-symbol"
-  | "no-cycle"
-  | "live-cycle"
   | "stale-cycle"
-  | "disarmed"
+  | keyof typeof AUTOPILOT
   | "scope-lost";
+
+// What GET /autopilot/status and the one event in the log say, per autopilot quirk. Any other quirk is armed shadow with a
+// planner_shadow_assignment, which is what a restart leaves behind (automation-service#46).
+const AUTOPILOT = {
+  "no-cycle": { status: "armed", mode: "shadow", event: "planner_assignment" },
+  "shadow-live-evidence": { status: "armed", mode: "shadow", event: "agent_credits_snapshot" },
+  "live-cycle": { status: "armed", mode: "live", event: "agent_credits_snapshot" },
+  "live-assignment": { status: "armed", mode: "live", event: "planner_assignment" },
+  "live-shadow-evidence": { status: "armed", mode: "live", event: "planner_shadow_assignment" },
+  disarmed: { status: "disarmed", mode: null, event: "planner_shadow_assignment" },
+  paused: { status: "paused", mode: "shadow", event: "planner_shadow_assignment" },
+} as const;
+const autopilotOf = (q: Quirk) => (q in AUTOPILOT ? AUTOPILOT[q as keyof typeof AUTOPILOT] : { status: "armed", mode: "shadow", event: "planner_shadow_assignment" });
 
 interface Seen {
   paths: string[];
@@ -79,9 +90,9 @@ function stub(quirk: Quirk, seen: Seen): Promise<http.Server> {
       if (quirk === "scope-lost") return refused(403, "missing scope");
       return quirk === "validation-skipped" ? { status: 201, body: {} } : refused(400, "shipType is required");
     }
-    if (p === "/api/automation/v1/autopilot/status") return ok({ status: quirk === "disarmed" ? "disarmed" : "armed", mode: quirk === "live-cycle" ? "live" : "shadow" });
+    if (p === "/api/automation/v1/autopilot/status") return ok({ status: autopilotOf(quirk).status, mode: autopilotOf(quirk).mode });
     if (p === "/api/automation/v1/autopilot/events") {
-      const type = quirk === "no-cycle" ? "planner_assignment" : quirk === "live-cycle" ? "agent_credits_snapshot" : "planner_shadow_assignment";
+      const type = autopilotOf(quirk).event;
       const at = quirk === "stale-cycle" ? Date.now() - 3_600_000 : Date.now();
       return ok({ events: [{ type, occurredAt: new Date(at).toISOString(), detail: { secret: OPERATOR } }] });
     }
@@ -213,15 +224,27 @@ describe("scripts/cutover-probe.mjs", () => {
     expect((await probe(env, ["--allow-skip=NOPE"])).code).toBe(2);
   });
 
-  it("HARD GATE: needs a planner_shadow_assignment at or after SINCE, and nothing else (live snapshot, stale, other events) will do", async () => {
-    const shadow = await serve("none");
-    const ok = await probe(full(shadow.base), ["--strict"]);
-    expect(ok.code).toBe(0);
-    expect(ok.out).toContain("armed (shadow)");
-    for (const quirk of ["no-cycle", "live-cycle", "stale-cycle"] as const) {
+  it("HARD GATE: takes the evidence the reported mode writes since SINCE: shadow planner_shadow_assignment, live agent_credits_snapshot or planner_assignment", async () => {
+    for (const quirk of ["none", "live-cycle", "live-assignment"] as const) {
+      const ok = await probe(full((await serve(quirk)).base), ["--strict"]);
+      expect([quirk, ok.code]).toEqual([quirk, 0]);
+      expect(ok.out).toContain(`armed (${String(autopilotOf(quirk).mode)}); events since SINCE`);
+    }
+    const shadow = await probe(full((await serve("none")).base), ["--strict"]);
+    expect(shadow.out).toContain("a restart resumes a live autopilot in shadow (automation-service#46): if it was live, re-arm it live");
+  });
+
+  it("HARD GATE: the other mode's evidence, a stale one or any other event will not do", async () => {
+    const cases = [
+      ["no-cycle", "armed (shadow) but no planner_shadow_assignment event (the planner_assignment in the window predate"],
+      ["shadow-live-evidence", "armed (shadow) but no planner_shadow_assignment event (the agent_credits_snapshot in the window predate"],
+      ["live-shadow-evidence", "armed (live) but no agent_credits_snapshot or planner_assignment event (the planner_shadow_assignment in the window predate"],
+      ["stale-cycle", "armed (shadow) but no planner_shadow_assignment event since"],
+    ] as const;
+    for (const [quirk, why] of cases) {
       const bad = await probe(full((await serve(quirk)).base));
-      expect(bad.code).toBe(1);
-      expect(bad.out).toContain("planner_shadow_assignment");
+      expect([quirk, bad.code]).toEqual([quirk, 1]);
+      expect(bad.out).toContain(why);
     }
   });
 
@@ -229,7 +252,11 @@ describe("scripts/cutover-probe.mjs", () => {
     const { base } = await serve("disarmed");
     const bad = await probe(full(base), ["--strict"]);
     expect(bad.code).toBe(1);
-    expect(bad.out).toContain("arm it in SHADOW mode");
+    expect(bad.out).toContain('autopilot is disarmed, not armed, so no cycle runs and the mint path is unproven: arm it');
+    expect(bad.out).toContain('POST /api/automation/v1/autopilot/arm {"mode":"shadow"}');
+    const paused = await probe(full((await serve("paused")).base));
+    expect(paused.code).toBe(1);
+    expect(paused.out).toContain("autopilot is paused (shadow), not armed");
     expect((await probe(full(base))).code).toBe(1);
     expect((await probe(full(base), ["--strict", "--allow-skip=AUTOMATION_CYCLE"])).code).toBe(2);
   });
