@@ -343,6 +343,8 @@ describe("the transitive snapshot", () => {
     expect(problems(pkg, lock, undefined, snapshot + "\nleft-pad\n")).toMatch(/is not "section name@version integrity"/);
     expect(problems(pkg, lock, undefined, "left-pad@1.0.0 sha512-x\n")).toMatch(/is not "section name@version integrity"/);
     expect(problems(pkg, lock, undefined, "bogus left-pad@1.0.0 sha512-x\n")).toMatch(/unknown section "bogus"/);
+    expect(problems(pkg, lock, undefined, "Runtime left-pad@1.0.0 sha512-x\n")).toMatch(/unknown section "Runtime"/);
+    expect(problems(pkg, lock, undefined, "runtime left-pad@1.0.0 sha512-x junk\n")).toMatch(/is not "section name@version integrity"/);
     const twice = snapshot + "\nruntime express@4.0.0 sha512-x\nruntime express@4.0.0 sha512-x\n";
     expect(problems(pkg, lock, undefined, twice)).toMatch(/is listed twice/);
   });
