@@ -12,7 +12,9 @@
 #   - m2m_token_posts > 0: automation-service minted through THIS auth-service since the restart (its token cache was
 #     emptied by the restart; without it the probe could pass on a 24 h token Go minted), and m2m_mint_failures = 0;
 #   - zero 401/403/503 lines and zero m2m failure lines in automation-service's log since the restart.
-# The probe adds the other half: a planner_shadow_assignment since the restart (a minted token introspected active).
+# The probe adds the other half: the cycle evidence of the autopilot's reported mode since the restart (a minted token
+# introspected active): planner_shadow_assignment in shadow, which is how the restart leaves an armed autopilot
+# (automation-service#46), or agent_credits_snapshot / planner_assignment once re-armed live.
 # ai-service is parked and not deployed: NOT PROBED.
 param(
   [Parameter(Mandatory = $true)][ValidatePattern('^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z$')][string]$Since,

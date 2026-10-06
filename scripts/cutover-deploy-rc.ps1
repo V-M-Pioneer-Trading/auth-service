@@ -12,10 +12,14 @@
 #      running container has no memory cap.
 #   1. the v* tag is pushed and `container.yml` finished: ghcr.io/v-m-pioneer-trading/auth-service:sha-<Sha> exists.
 #   2. run THIS script (merge freeze on auth-service from here until the probe is green; no terraform apply).
-#      The autopilot should be armed in SHADOW mode already (the probe's hard gate needs it).
+#      The probe's hard gate needs the autopilot armed (shadow is enough and trades nothing).
 #   3. only if the GATE passes it restarts automation-service (docker restart): its 24 h M2M token cache is emptied, so its
 #      next call mints a token through POST /auth/v1/m2m-token on THIS auth-service. Without that the probe would pass on a
 #      token Go minted up to 24 h ago, and the first real TypeScript mint would be 12 h after the merge.
+#      automation-service persists the autopilot (automation-service#46, autopilot-design decision 13): an armed or paused
+#      autopilot comes back with the same status but ALWAYS in shadow mode (a live one also raises the anomaly
+#      autopilot_resumed_in_shadow); a disarmed one stays disarmed. The script reads the public status before and after
+#      the restart and prints how to re-arm it in the mode it had. It never arms anything itself.
 #   4. node scripts/cutover-probe.mjs --strict (SINCE = RESTARTED_AT) when automation has had a planner cycle, then
 #      pwsh ./scripts/cutover-hostcheck.ps1 -Since <RESTARTED_AT> -Sha <Sha>
 param(
@@ -77,6 +81,54 @@ function Get-AgentSymbol([string]$When) {
   }
 }
 
+# The autopilot's lifecycle, from automation-service's public status route: status and mode only, and no token is sent.
+function Get-Autopilot([string]$When) {
+  try {
+    $a = Invoke-RestMethod -Uri "$BaseUrl/api/automation/v1/autopilot/status" -TimeoutSec 20
+    $ap = [pscustomobject]@{ Status = [string]$a.status; Mode = $(if ($null -eq $a.mode) { 'none' } else { [string]$a.mode }) }
+    Write-Host "  autopilot $When`: status=$($ap.Status) mode=$($ap.Mode)"
+    return $ap
+  } catch {
+    Write-Host "  autopilot $When`: could not be read ($($_.Exception.Message))"
+    return $null
+  }
+}
+
+# How to arm in $Mode, printed and never run: arming is the owner's call. The command names $env:OPERATOR_TOKEN (a
+# signed-in session with fleet:control) and never holds a token: the format string is single-quoted, nothing expands here.
+function Write-ArmCommand([string]$Mode) {
+  Write-Host "    the dashboard's autopilot panel: mode $Mode, Arm. Or, in PowerShell 7 with `$env:OPERATOR_TOKEN set:"
+  Write-Host ('    Invoke-RestMethod -Method Post -Uri ''{0}/api/automation/v1/autopilot/arm'' -Headers @{{ Authorization = "Bearer $env:OPERATOR_TOKEN" }} -ContentType ''application/json'' -Body ''{{"mode":"{1}"}}''' -f $BaseUrl, $Mode)
+}
+
+# What the restart did to the autopilot, and what the owner does about it (automation-service#46).
+function Write-AutopilotAdvice($Before, $After) {
+  Write-Host 'Autopilot across the restart (automation-service#46: armed or paused comes back as it was but ALWAYS in shadow; disarmed stays disarmed)'
+  if ($null -eq $Before) {
+    Write-Host '  It was not read before the restart, so its previous mode is unknown. Read the event log: the restart wrote an armed or paused event'
+    Write-Host '  with actor system:restart and the persisted row (restoredFrom); an autopilot_resumed_in_shadow anomaly means it was live.'
+  } elseif ($Before.Status -in 'armed', 'paused' -and $Before.Mode -eq 'live') {
+    Write-Host "  WARNING: it was $($Before.Status) LIVE. The restart brings it back $($Before.Status) in SHADOW and raises the anomaly autopilot_resumed_in_shadow."
+    Write-Host '  The probe takes the shadow evidence (planner_shadow_assignment). Re-arm it live only once the probe and the host check are green:'
+    Write-ArmCommand 'live'
+    if ($Before.Status -eq 'paused') { Write-Host '    It was paused: arming live resumes trading. To leave it paused, arm live and then Pause (POST /api/automation/v1/autopilot/pause).' }
+  } elseif ($Before.Status -eq 'armed') {
+    Write-Host "  It was armed in $($Before.Mode) mode and comes back the same: nothing to re-arm."
+  } else {
+    $was = if ($Before.Status -eq 'paused') { "paused ($($Before.Mode))" } else { $Before.Status }
+    Write-Host "  It was $was and comes back the same. The probe's hard gate needs it ARMED: before the probe, arm it in shadow (it trades nothing):"
+    Write-ArmCommand 'shadow'
+    if ($Before.Status -eq 'paused') { Write-Host '    (re-arming a paused autopilot resumes it; pause it again after the probe if it should stay paused)' }
+  }
+  if ($null -eq $After) { Write-Host '  It could not be read after the restart: check GET /api/automation/v1/autopilot/status before the probe.'; return }
+  if ($null -ne $Before) {
+    $wantMode = if ($Before.Status -in 'armed', 'paused') { 'shadow' } else { 'none' }
+    if ($After.Status -ne $Before.Status -or $After.Mode -ne $wantMode) {
+      Write-Host "  UNEXPECTED: expected status=$($Before.Status) mode=$wantMode after the restart, read status=$($After.Status) mode=$($After.Mode). Read automation-service's log (did the restore fail?) before the probe."
+    }
+  }
+}
+
 function Write-Rollback {
   Write-Host ""
   Write-Host "Rollback if anything is red (the last Go image; a rollback is not sticky, see the revert-PR rule in the PR):"
@@ -132,6 +184,7 @@ else {
 }
 
 Write-Host "Step 4b: restarting automation-service (empties its 24 h M2M token cache: the next call mints through THIS auth-service)"
+$apBefore = Get-Autopilot 'BEFORE the restart'
 $rs = Invoke-Host @(
   'docker restart automation-service > /dev/null && echo restarted_at=$(date -u +%Y-%m-%dT%H:%M:%SZ)',
   "docker inspect automation-service --format 'automation-service state={{.State.Status}} restarts={{.RestartCount}}'"
@@ -140,6 +193,13 @@ Write-Host $rs
 if ($rs -notmatch 'restarted_at=(\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z)') { Write-Host 'The restart did not report a time: do it by hand (docker restart automation-service) and note the UTC time.'; exit 1 }
 $restartedAt = $Matches[1]
 Write-Host "RESTARTED_AT=$restartedAt (SINCE for the probe, -Since for the host check). ai-service: NOT PROBED (parked, not deployed)."
+# The status route answers once the restore is done; the process needs a few seconds to listen first.
+$apAfter = $null
+for ($i = 0; $i -lt 12 -and $null -eq $apAfter; $i++) {
+  Start-Sleep -Seconds 5
+  $apAfter = Get-Autopilot 'AFTER the restart'
+}
+Write-AutopilotAdvice $apBefore $apAfter
 
 Write-Host "After the deploy"
 $after = Get-AgentSymbol 'AFTER'
@@ -147,6 +207,6 @@ if ($before -eq $after -and $before -notin '(none)', '(unreadable)') { Write-Hos
 else { Write-Host "SQLITE STATE: CHECK. before=$before after=$after. Export EXPECT_AGENT_SYMBOL only if 'before' was read from the Go image." }
 
 Write-Host ""
-Write-Host "Next: wait for a planner cycle (a minute or two), then node scripts/cutover-probe.mjs --strict   with SINCE=$restartedAt and EXPECT_AGENT_SYMBOL=$before"
+Write-Host "Next: with the autopilot armed (see above), wait for a planner cycle (a minute or two), then node scripts/cutover-probe.mjs --strict   with SINCE=$restartedAt and EXPECT_AGENT_SYMBOL=$before"
 Write-Host "      then pwsh ./scripts/cutover-hostcheck.ps1 -Since $restartedAt -Sha $Sha"
 Write-Rollback
