@@ -267,13 +267,24 @@ describe("the transitive snapshot", () => {
     expect(renderSnapshot(computeSnapshot(lock))).toBe(snapshot.replace(/\r\n/g, "\n"));
   });
 
+  it("prefixes every package line with its section, with no [runtime] / [dev] header lines", () => {
+    const lines = snapshot.split("\n").filter((l) => l !== "" && !l.startsWith("#"));
+    expect(lines.length).toBeGreaterThan(100);
+    for (const line of lines) expect(line).toMatch(/^(runtime|dev) \S+@\S+ sha512-\S+$/);
+    expect(snapshot).not.toMatch(/^\[/m);
+  });
+
+  it("rejects the old header format, so a stale snapshot cannot pass as the new one", () => {
+    const { pkg, lock } = fresh();
+    const old = "[runtime]\nexpress@4.0.0 sha512-x\n\n[dev]\njest@30.0.0 sha512-y\n";
+    expect(check(pkg, lock, allow, old).join("\n")).toMatch(/is not "section name@version integrity"/);
+  });
+
   it("separates runtime from dev: what express brings is runtime, what jest brings is dev", () => {
-    const text = snapshot;
-    const runtime = text.slice(text.indexOf("\n[runtime]\n"), text.indexOf("\n[dev]\n"));
-    expect(runtime).toMatch(/^express@4\./m);
-    expect(runtime).toMatch(/^@tsoa\/runtime@6\./m);
-    expect(runtime).not.toMatch(/^jest@/m);
-    expect(text.slice(text.indexOf("\n[dev]\n"))).toMatch(/^jest@30\./m);
+    expect(snapshot).toMatch(/^runtime express@4\./m);
+    expect(snapshot).toMatch(/^runtime @tsoa\/runtime@6\./m);
+    expect(snapshot).not.toMatch(/^runtime jest@/m);
+    expect(snapshot).toMatch(/^dev jest@30\./m);
   });
 
   it("fails when the lockfile gains a package that is not in the snapshot (the gate the acceptance criteria ask to see fail)", () => {
@@ -329,18 +340,17 @@ describe("the transitive snapshot", () => {
 
   it("fails on a snapshot that is hand-edited into something unreadable, or lists a name twice", () => {
     const { pkg, lock } = fresh();
-    expect(problems(pkg, lock, undefined, snapshot + "\nleft-pad\n")).toMatch(/is not "name@version integrity"/);
-    expect(problems(pkg, lock, undefined, "left-pad@1.0.0 sha512-x\n")).toMatch(/outside a \[runtime\] \/ \[dev\] section/);
-    const twice = snapshot.replace("\n[dev]\n", "\n[runtime]\nexpress@4.0.0 sha512-x\nexpress@4.0.0 sha512-x\n[dev]\n");
+    expect(problems(pkg, lock, undefined, snapshot + "\nleft-pad\n")).toMatch(/is not "section name@version integrity"/);
+    expect(problems(pkg, lock, undefined, "left-pad@1.0.0 sha512-x\n")).toMatch(/is not "section name@version integrity"/);
+    expect(problems(pkg, lock, undefined, "bogus left-pad@1.0.0 sha512-x\n")).toMatch(/unknown section "bogus"/);
+    const twice = snapshot + "\nruntime express@4.0.0 sha512-x\nruntime express@4.0.0 sha512-x\n";
     expect(problems(pkg, lock, undefined, twice)).toMatch(/is listed twice/);
   });
 
   it("passes when a snapshot is the same set in another order", () => {
     const { pkg, lock } = fresh();
     const lines = snapshot.split("\n");
-    const start = lines.indexOf("[runtime]") + 1;
-    const end = lines.indexOf("[dev]");
-    const reordered = [...lines.slice(0, start), ...lines.slice(start, end).reverse(), ...lines.slice(end)].join("\n");
+    const reordered = [...lines.filter((l) => l.startsWith("#")), ...lines.filter((l) => !l.startsWith("#")).reverse()].join("\n");
     expect(check(pkg, lock, allow, reordered)).toEqual([]);
   });
 });
