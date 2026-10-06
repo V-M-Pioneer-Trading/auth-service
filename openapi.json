@@ -298,7 +298,7 @@
   "info": {
     "title": "Auth Service API",
     "version": "0.0.0",
-    "description": "The SpaceTraders game credential and the fleet's token verifier. Public routes only: the internal /auth/v1/* routes are documented as they are ported.",
+    "description": "The SpaceTraders game credential and the fleet's token verifier. Public /api/auth/v1/* routes and the internal /auth/v1/* routes the other services call.",
     "contact": {}
   },
   "paths": {
