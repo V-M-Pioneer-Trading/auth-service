@@ -22,7 +22,7 @@
   "dependencies": {
     "@tsoa/runtime": "^6.6.0",
     "express": "^4.22.3",
-    "jose": "6.2.12"
+    "jose": "6.2.13"
   },
   "devDependencies": {
     "@types/express": "^4.17.25",
