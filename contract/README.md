@@ -181,9 +181,10 @@ each one is a place a "cleaner" implementation fails the contract.
     session does not carry`.
 13. **Only two of the three comparisons are constant-time.** Introspect and
     M2M use `subtle.ConstantTimeCompare` (M2M against every enabled caller,
-    without early exit). The vault's shared secret is compared with plain `!=`.
-    Not testable black-box; a port should use a constant-time compare
-    everywhere and say so.
+    without early exit). The Go service compares the vault's shared secret with
+    plain `!=`. The suite does not pin the comparison (not testable black-box);
+    the TS port compares in constant time (`timingSafeEqual` on SHA-256 digests,
+    still 403). A port should use a constant-time compare everywhere and say so.
 14. **Empty never matches.** An empty or unset introspection secret rejects every
     caller, including one sending an empty header. A caller whose M2M secret is
     unset is disabled and gets the same 401 as a stranger.

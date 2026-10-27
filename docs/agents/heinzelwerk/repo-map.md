@@ -20,3 +20,10 @@ Two roles in one process. The vault: holds the SpaceTraders account and agent to
 - Called by: st-gateway (`GET /auth/v1/token`, `X-Auth-Service-Secret`), every verifier (introspect, `X-Introspection-Secret`), automation-service and ai-service (`m2m-token`, `X-M2M-Caller-Secret`).
 - Port 8082 locally, 80 in compose.
 - CI `container.yml`: `ts-checks` → `test`, `contract` → `docker` (main: SSM redeploy, `sha-<sha>` tag) → `sync-openapi`.
+
+## Reference docs
+
+- `README.md` "Endpoints", "Environment variables", "Secrets": read when changing routes, their callers, config or secrets.
+- `README.md` "Deploy", "Rollback", "The SQLite state": read when deploying, rolling back, or touching `/data`.
+- `contract/README.md` "Behaviour notes": read when changing routes, introspection, operator routes, the poller or M2M.
+- `meta/docs/design/token-introspection.md`: the authoritative introspection and M2M contract.
