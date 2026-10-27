@@ -18,8 +18,8 @@ Two roles in one process. The vault: holds the SpaceTraders account and agent to
 
 - Calls: st-gateway `/proxy`, Clerk API (M2M mint).
 - Called by: st-gateway (`GET /auth/v1/token`, `X-Auth-Service-Secret`), every verifier (introspect, `X-Introspection-Secret`), automation-service and ai-service (`m2m-token`, `X-M2M-Caller-Secret`).
-- Port 8082 locally, 80 in compose.
-- CI `container.yml`: `ts-checks` → `test`, `contract` → `docker` (main: SSM redeploy, `sha-<sha>` tag) → `sync-openapi`.
+- Port 80 by default (`PORT`); meta compose publishes it as 8082.
+- CI `container.yml`: `ts-checks` first; `test` and `contract` need it; `docker` needs `test` and `ts-checks` only (main: SSM redeploy, `sha-<sha>` tag), so `contract` gates merges through branch protection, not the deploy; `sync-openapi` on main.
 
 ## Reference docs
 

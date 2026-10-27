@@ -14,8 +14,9 @@ How heinzelwerk agents work in this repo. Mode rules (single repo vs workspace) 
   5. `npm run build --silent`
   6. `npm run openapi --silent && git diff --exit-code openapi.json`
   7. `npm test --silent -- --silent`
-  8. `docker build -q -t auth-service:contract . && CONTRACT_IMAGE=auth-service:contract node scripts/run-contract.cjs`
-- **Security**: gitleaks pre-commit hook (`gitleaks git --pre-commit --staged` in `.git/hooks/pre-commit`, so every worktree runs it) · dependency audit in checks
+  8. `(cd contract && npm ci --ignore-scripts && npm run typecheck)`
+  9. `docker build -q -t auth-service:contract . && CONTRACT_IMAGE=auth-service:contract node scripts/run-contract.cjs` (needs a running Docker daemon)
+- **Security**: no secret scan runs yet: gitleaks is not installed and no pre-commit hook exists (planned: `gitleaks git --pre-commit --staged` in `.git/hooks/pre-commit`), so check every diff for secrets by eye · dependency audit in checks
 - **Coding standards**: `CLAUDE.md` in this repo; lint rules come from `@v-m-pioneer-trading/eslint-config` and change only by a release of that package
 - **Risk areas** (validator reviews diffs touching these on Opus). The whole repo is one; hot spots:
   - `src/vault.ts`, SQLite schema: game and account tokens at rest; DDL stays openable by the Go image, for rollback
