@@ -241,6 +241,7 @@ The SSM parameters the bootstrap reads, and the variables they become: `AUTH_SER
     startup requirement — production has no such variable until meta#80 step 3 applies it by
     hand, and a service that refused to boot would take the game credential down with it (the
     2026-08-22 outage shape).
+    Correction (2026-10-29): infra now reads the SSM secret and refuses to restart the container if it is empty, so production does have the variable; the fail-closed-when-unset behaviour still holds, see ../V-M-Pioneer-Trading_infrastructure/auth-service/main.tf:406,418.
   - Setting it to the same value as `AUTH_SERVICE_SHARED_SECRET` **is** fatal at startup. That
     cannot happen by accident in production today, so failing loudly costs nothing.
 - `M2M_CALLER_SECRET_AUTOMATION_SERVICE`, `M2M_CALLER_SECRET_AI_SERVICE` — the secret each

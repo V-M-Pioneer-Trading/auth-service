@@ -18,6 +18,7 @@ go-verdicts.json
   keys     golang-jwt v5.3.1 ParseRSAPublicKeyFromPEM / ParseRSAPrivateKeyFromPEM, by the case names of
            src/testSupport/keyCases.ts (the keys are generated per run, so no private key is committed)
   The tests in goUrl.test.ts, goTime.test.ts, goText.test.ts and keys.test.ts hold the TypeScript readers to them.
+  Correction (2026-10-29): none of those four files exists; src/__tests__/goParity.test.ts reads go-verdicts.json (urls, times, spaces, keys), see src/__tests__/goParity.test.ts:7-14.
 
   The "jwt", "mediaTypes" and "queries" sections and the key cases added in step 7b were recorded by go-recorder.go.txt
   (Go 1.22.4, golang-jwt v5.3.1; the program, and the Go service's verifyToken in it verbatim but for a fixed clock):

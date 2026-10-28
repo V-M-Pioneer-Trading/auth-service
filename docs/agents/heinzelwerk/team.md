@@ -16,6 +16,7 @@ How heinzelwerk agents work in this repo. Mode rules (single repo vs workspace) 
   - The `contract` job's probe "The image's Node is at least 24.15 and it runs as root": `docker run --rm auth-service:contract -e '<script from container.yml>'` (unverified locally: docker daemon not running)
   - `cd contract && npm ci --ignore-scripts && npm run typecheck`
   - `CONTRACT_IMAGE=auth-service:contract node scripts/run-contract.cjs` (unverified locally: needs the image)
+  - No Docker daemon: in `contract/`, `CONTRACT_BIN=<native executable> node --test` runs the same suite against a process instead of the image; it cannot test port 80, and `scripts/run-contract.cjs` still requires `CONTRACT_IMAGE` (`contract/lib/service.ts:45-48`; `contract/README.md` "Running it", `scripts/run-contract.cjs:136`).
   - CI also runs `npm audit --audit-level=high` in `ts-checks`; it is red on main (V-M-Pioneer-Trading/meta#119) and left out here by owner decision until that ticket closes, so CI on a PR is red for that step alone.
 - **Checks verified on main**: 2d25f28 2026-10-28
 - **Coding standards**: `@v-m-pioneer-trading/eslint-config` base (`eslint.config.mjs:5`); invariants and "Deliberate differences from Go" in `CLAUDE.md`
