@@ -40,3 +40,8 @@ Facts verified against origin/main 2d25f28 on 2026-10-27, each with `path:line`.
 - Image runs as root; /data/auth.db root-owned (Dockerfile:35-37, CLAUDE.md:33-34). GET /auth/v1/token must NOT gain Cache-Control: no-store (15 contract cases; vault.controller.ts:28-30, CLAUDE.md:136-139).
 - Reset Agent can take ~2 min behind a stuck upstream (CLAUDE.md:154-156, src/vault.ts:205-208).
 11. DOCS (no docs/ dir): README.md (endpoints :68, introspection :80, M2M :128, deploy :181, SQLite :191, rollback :195, secrets :216, env :220); CLAUDE.md (commands, CI, dependency gate, Go parity, invariants :193-198); contract/README.md; contract/fixtures/SOURCE.txt, src/__tests__/fixtures/SOURCE.txt; openapi.json (synced to meta).
+
+## Reference docs
+
+- `README.md`: read when deploying, rolling back, or touching the `/data` volume, secrets or env vars.
+- `contract/README.md` "Behaviour notes": read when changing routing, introspection, M2M or startup.

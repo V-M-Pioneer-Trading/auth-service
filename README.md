@@ -241,6 +241,8 @@ The SSM parameters the bootstrap reads, and the variables they become: `AUTH_SER
     startup requirement — production has no such variable until meta#80 step 3 applies it by
     hand, and a service that refused to boot would take the game credential down with it (the
     2026-08-22 outage shape).
+
+    Correction (2026-10-28): AUTH_INTROSPECTION_SECRET is managed by Terraform (generated SSM parameter, injected on the bootstrap docker run), not applied by hand; applied production state not verified here, see V-M-Pioneer-Trading_infrastructure/auth-service/main.tf:521.
   - Setting it to the same value as `AUTH_SERVICE_SHARED_SECRET` **is** fatal at startup. That
     cannot happen by accident in production today, so failing loudly costs nothing.
 - `M2M_CALLER_SECRET_AUTOMATION_SERVICE`, `M2M_CALLER_SECRET_AI_SERVICE` — the secret each
