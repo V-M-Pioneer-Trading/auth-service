@@ -50,6 +50,7 @@ Verified against 2d25f28 2026-10-29.
 ## Build, test, run
 - `npm ci --ignore-scripts` (never plain); `npm run typecheck|lint|build`; `npm test` (pretest builds, `package.json:19`); one file `npm test -- src/__tests__/verifyToken.test.ts`. `CLAUDE.md:20-30`
 - Contract locally: `docker build -t auth-service:contract .` then `CONTRACT_IMAGE=auth-service:contract node scripts/run-contract.cjs`. `CLAUDE.md:20-30`
+- Contract without Docker: `CONTRACT_BIN=<executable>` runs the suite against a process, not an image (cannot test port 80; written for the Go binary, unverified with the Node build). `contract/lib/service.ts:45-48`, `contract/README.md:31-34`
 - Run: `npm run build && node dist/server.js` or `docker compose up auth-service` from meta. `README.md:30-35`; dev secrets from `../meta/dev-keys` `README.md:37`
 - Refuses start without `CLERK_JWT_KEY(_FILE)` or `AUTH_SERVICE_SHARED_SECRET`. `src/config.ts:116`, `:249`
 - Defaults PORT 80, ./data/auth.db, `http://localhost:3002`. `src/config.ts:78-80`
@@ -83,3 +84,16 @@ Verified against 2d25f28 2026-10-29.
 - M2M caller secrets must differ from vault, introspection and each other. `src/config.ts:125-131`, `:177-187`
 - Image runs as root. `./Dockerfile:35-37`
 - Runtime test fails if `@hapi/` or `@types/` is loaded. `./Dockerfile:19-20`
+
+## Reference docs
+- `./README.md` "Deploy": read when changing auth-service host layout or the bootstrap.
+- `./README.md` "Rollback": read when rolling back auth-service, incl. across the Go cutover (imageTag runbook, not sticky, older image may reject today's env, last Go image sha).
+- `./README.md` "Secrets": read when adding or rotating a secret.
+- `./README.md` "The SQLite state": read when touching the schema or the `/data` volume.
+- `contract/README.md` "Layout" and "How it works": read when adding or finding a contract test, or changing the contract harness.
+- `contract/README.md` "Routing", "Headers": read when changing routing, CORS or headers.
+- `contract/README.md` secret-check, introspection and operator-route sections (L173-269): read when changing secret checks, introspection or operator routes.
+- `contract/README.md` poller, status and M2M sections (L270-338): read when changing the poller, status or M2M minting.
+- `contract/README.md` startup section (L339+): read when changing startup validation or logging.
+- `contract/fixtures/SOURCE.txt`: read when meta/fixtures/introspection.json changes (change meta first, re-copy, update commit/sha) or when bumping the fixture version (history, case totals 75).
+- `src/__tests__/fixtures/SOURCE.txt`: read when rebuilding go-written.db or re-recording Go parity verdicts.
