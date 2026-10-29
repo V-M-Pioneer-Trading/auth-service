@@ -74,7 +74,7 @@ Verified against 2d25f28 2026-10-29.
 - Lint: `eslint . --max-warnings 0` `package.json:14`; `base()` from eslint-config tarball v1.1.0 `eslint.config.mjs:1`, `package.json:32`; generated routes get `@ts-nocheck` `scripts/codegen.cjs:1-4`; strict tsconfig plus `exactOptionalPropertyTypes` `tsconfig.json`.
 
 ## Traps
-- `contract/` never edited to pass; lint ignores it. `CLAUDE.md:6-7`, `eslint.config.mjs:5`
+- `contract/` never edited to pass; lint ignores it. `CLAUDE.md:6-7`, `eslint.config.mjs:6`
 - Contract pins `suite=330 pass=293 dynamic-skips=37`. `contract-skip.expected:6-9`
 - Never extend `scripts/cutover-probe.mjs` to call `register`/`agent-token` with an `agent:reset` session: resets the game account. `CLAUDE.md:52-53`
 - Dependabot PR is red until `snapshot:deps` is committed. `CLAUDE.md:73`
@@ -92,8 +92,8 @@ Verified against 2d25f28 2026-10-29.
 - `./README.md` "The SQLite state": read when touching the schema or the `/data` volume.
 - `contract/README.md` "Layout" and "How it works": read when adding or finding a contract test, or changing the contract harness.
 - `contract/README.md` "Routing", "Headers": read when changing routing, CORS or headers.
-- `contract/README.md` secret-check, introspection and operator-route sections (L173-269): read when changing secret checks, introspection or operator routes.
-- `contract/README.md` poller, status and M2M sections (L270-338): read when changing the poller, status or M2M minting.
-- `contract/README.md` startup section (L339+): read when changing startup validation or logging.
+- `contract/README.md` secret-check, introspection and operator-route sections (L173-271): read when changing secret checks, introspection or operator routes.
+- `contract/README.md` poller, status and M2M sections (L272-340): read when changing the poller, status or M2M minting.
+- `contract/README.md` startup section (L341+): read when changing startup validation or logging.
 - `contract/fixtures/SOURCE.txt`: read when meta/fixtures/introspection.json changes (change meta first, re-copy, update commit/sha) or when bumping the fixture version (history, case totals 75).
 - `src/__tests__/fixtures/SOURCE.txt`: read when rebuilding go-written.db or re-recording Go parity verdicts.
