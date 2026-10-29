@@ -10,3 +10,6 @@ data/
 *.db
 # ...except the fixture: a SQLite file written by the Go image's db package (src/__tests__/fixtures/SOURCE.txt)
 !src/__tests__/fixtures/go-written.db
+
+# heinzelwerk task worktrees
+.claude/worktrees/

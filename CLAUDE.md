@@ -44,6 +44,8 @@ the gate has not passed. **`docker`** builds the arm64 image and, on `main` only
 (tip-of-main check, one deploy at a time); it waits for `test` and `ts-checks`, not for `contract`. A `v*` tag pushes
 `sha-<40 hex>` and never deploys: that is how a pull request's tip gets an image to deploy by hand and probe.
 
+Correction (2026-10-29): the workflow has five jobs, the fifth being `sync-openapi`, which waits for `test` and publishes `openapi.json` to meta on `main`, see `.github/workflows/container.yml:303-305`, V-M-Pioneer-Trading/meta .github/workflows/openapi-sync.yml:219,223,227.
+
 ## Production probe
 
 `scripts/cutover-probe.mjs` (with `__tests__/cutoverProbe.test.ts`, stub-backed) probes the public domain: the public auth
@@ -104,6 +106,8 @@ host is the gate (`scripts/cutover-deploy-rc.ps1` and `scripts/cutover-hostcheck
 | M2M: `cacheEntryFrom`, the decode of Clerk's answer (`encoding/json` field folding, first value, 64 KiB), `ProxyFromEnvironment` | `src/m2m/token.ts`, `goJson.ts`, `clerk.ts`, `proxy.ts` | `m2mGoParity.test.ts` against Go's recorded verdicts (80 tokens, 58 bodies, 1140 proxy decisions) |
 | M2M: the per-caller cache (single flight, detached mint, refresh at half life, 10 s backoff, 10 s timeout, expiry) | `src/m2m/cache.ts` | `m2mCache.test.ts` on a fake clock; contract `m2m-clerk*.test.ts` |
 | M2M: the route, both trust anchors, the Clerk request, redirects, the log | `src/m2m/service.ts`, `dev.ts`, `clerk.ts` | `m2m.test.ts` against a Clerk stub on a socket; contract `m2m-*.test.ts`, `startup.test.ts` |
+
+Correction (2026-10-29): the vendored introspection fixture is version 7, not v6, see `src/__tests__/introspectionFixture.test.ts:214-215`, `contract/fixtures/SOURCE.txt:5`.
 
 Never `url.Parse` through WHATWG `URL`, never `trim()` for Go's TrimSpace, never `createPublicKey(pem)` directly: each
 answers differently from Go on inputs the contract pins. Never `URLSearchParams` or `express.urlencoded` for the
@@ -200,3 +204,13 @@ base)` for a Location (WHATWG reads `///h`, `/\h`, `http:\\h` as another host wh
 ---
 
 Update this file in the same PR as the change it describes.
+
+## Agent skills (heinzelwerk)
+
+- **Precedence**: for heinzelwerk team work, these pointers override any other agent-skills block in this file.
+- **Issue tracker**: GitHub issues, one tracker for the workspace in V-M-Pioneer-Trading/meta. See `docs/agents/heinzelwerk/issue-tracker.md` before creating, reading, or labelling issues.
+- **Triage labels**: the five canonical labels, defined in meta only. See `docs/agents/heinzelwerk/triage-labels.md` before applying any label.
+- **Domain docs**: multi-context workspace, one context per repo; map in `../meta/GLOSSARY-MAP.md`. Read `docs/agents/heinzelwerk/domain.md` before exploring code or naming anything.
+- **Team rules**: read `docs/agents/heinzelwerk/team.md` before any team task.
+- **Repo map**: see `docs/agents/heinzelwerk/repo-map.md` when locating code.
+- **Learnings**: read `../meta/docs/agents/heinzelwerk/learnings.md` before starting any task.
