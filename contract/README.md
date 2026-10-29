@@ -185,7 +185,7 @@ each one is a place a "cleaner" implementation fails the contract.
     Not testable black-box; a port should use a constant-time compare
     everywhere and say so.
 
-    Correction (2026-10-29): in the TS service all three secret compares are constant-time (SHA-256 + `timingSafeEqual`), see auth-service/src/vault.ts:67-76, auth-service/src/introspection.ts:59, auth-service/src/m2m/service.ts:115.
+    Correction (2026-10-29): in the TS service all three secret compares are constant-time (SHA-256 + `timingSafeEqual`), see src/vault.ts:75, src/introspection.ts:59, src/m2m/service.ts:115.
 14. **Empty never matches.** An empty or unset introspection secret rejects every
     caller, including one sending an empty header. A caller whose M2M secret is
     unset is disabled and gets the same 401 as a stranger.

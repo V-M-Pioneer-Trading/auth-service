@@ -242,7 +242,7 @@ The SSM parameters the bootstrap reads, and the variables they become: `AUTH_SER
     hand, and a service that refused to boot would take the game credential down with it (the
     2026-08-22 outage shape).
 
-    Correction (2026-10-29): production sets it from SSM `auth-service-introspection-secret` and the bootstrap refuses to restart with it empty (meta#80 is closed); unset stays legal only in the service itself, see V-M-Pioneer-Trading_infrastructure/auth-service/main.tf:406 and auth-service/src/config.ts:250-253.
+    Correction (2026-10-29): production sets it from SSM `auth-service-introspection-secret` and the bootstrap refuses to restart with it empty (meta#80 is closed); unset stays legal only in the service itself, see V-M-Pioneer-Trading/infrastructure auth-service/main.tf:406 and src/config.ts:251-253.
   - Setting it to the same value as `AUTH_SERVICE_SHARED_SECRET` **is** fatal at startup. That
     cannot happen by accident in production today, so failing loudly costs nothing.
 - `M2M_CALLER_SECRET_AUTOMATION_SERVICE`, `M2M_CALLER_SECRET_AI_SERVICE` — the secret each
