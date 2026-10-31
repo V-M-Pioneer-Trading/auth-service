@@ -35,7 +35,7 @@ RUN npm ci --ignore-scripts --omit=dev --omit=optional \
 # Runs as root, the distroless default and what the Go image did: the existing /data/auth.db on the host volume is
 # root-owned, and a non-root process could not write it. Changing that needs a volume ownership migration and is a
 # post-cutover issue.
-FROM gcr.io/distroless/nodejs24-debian13@sha256:96df910f65fdd8a21d00d14d4cc046adcfcf3ced2d5e96be4b39ebde9f4866c6
+FROM gcr.io/distroless/nodejs24-debian13@sha256:51eee69b25037942014428da85f5b436a4d88f283e545981d03f25b7db72469a
 WORKDIR /app
 ENV NODE_ENV=production SQLITE_DB_PATH=/data/auth.db
 COPY package.json ./
