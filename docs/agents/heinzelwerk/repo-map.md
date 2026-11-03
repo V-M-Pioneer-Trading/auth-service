@@ -38,7 +38,7 @@ Verified against 2d25f28 2026-10-29.
 
 ## Calls and called-by
 - Called by st-gateway for `/auth/v1/token`. `../st-gateway/src/authServiceClient.ts:65`
-- Every other service asks `/introspect` through clerk-client. `CLAUDE.md:79-80` (clerk-client is not a dependency here)
+- Every other service asks `/introspect` through clerk-client. `CLAUDE.md:78-79` (clerk-client is not a dependency here)
 - Vendored `contract/fixtures/introspection.json` = meta `../meta/fixtures/introspection.json`, fixture v7, meta f226e5f, sha256 pinned `contract/fixtures/SOURCE.txt:3-6`; asserted `src/__tests__/introspectionFixture.test.ts:204-212` and `contract/tests/introspect-fixture.test.ts`; `-text` in `.gitattributes:8`.
 - `openapi.json` written by `scripts/write-openapi.cjs` (`package.json:16`); synced to meta `../meta/openapi/auth-service.json` `.github/workflows/container.yml:302-307`.
 - Go parity fixtures: `src/__tests__/fixtures/SOURCE.txt:1-68`.
@@ -71,15 +71,15 @@ Verified against 2d25f28 2026-10-29.
 
 ## Patterns
 - New route = tsoa controller; middleware order is load-bearing, no body or query parser. `src/server.ts:109-137`
-- Each Go-parity piece has a recorded-verdict test. `CLAUDE.md:85-108`
+- Each Go-parity piece has a recorded-verdict test. `CLAUDE.md:84-107`
 - Lint: `eslint . --max-warnings 0` `package.json:14`; `base()` from eslint-config tarball v1.1.0 `eslint.config.mjs:1`, `package.json:32`; generated routes get `@ts-nocheck` `scripts/codegen.cjs:1-4`; strict tsconfig plus `exactOptionalPropertyTypes` `tsconfig.json`.
 
 ## Traps
 - `contract/` never edited to pass; lint ignores it. `CLAUDE.md:6-7`, `eslint.config.mjs:6`
 - Contract pins `suite=330 pass=293 dynamic-skips=37`. `contract-skip.expected:6-9`
-- Never extend `scripts/cutover-probe.mjs` to call `register`/`agent-token` with an `agent:reset` session: resets the game account. `CLAUDE.md:54-55`
-- Dependabot PR is red until `snapshot:deps` is committed. `CLAUDE.md:75`
-- No WHATWG URL, `trim()`, `createPublicKey(pem)`, `URLSearchParams`, `express.urlencoded`, `JSON.parse` on Go-parity paths. `CLAUDE.md:112-119`
+- Never extend `scripts/cutover-probe.mjs` to call `register`/`agent-token` with an `agent:reset` session: resets the game account. `CLAUDE.md:53-54`
+- Dependabot PR is red until `snapshot:deps` is committed. `CLAUDE.md:74`
+- No WHATWG URL, `trim()`, `createPublicKey(pem)`, `URLSearchParams`, `express.urlencoded`, `JSON.parse` on Go-parity paths. `CLAUDE.md:109-116`
 - Token answer has no `Cache-Control`: 15 contract cases pin it. `src/controllers/vault.controller.ts:28-30`
 - Unset `AUTH_INTROSPECTION_SECRET` is legal; `/introspect` then rejects all. `src/config.ts:250-253`
 - M2M caller secrets must differ from vault, introspection and each other. `src/config.ts:125-131`, `:177-187`
