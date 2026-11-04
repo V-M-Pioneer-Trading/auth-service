@@ -4,7 +4,7 @@
 # `npm ci --ignore-scripts` everywhere: no dependency's install script runs.
 
 # Build: full dependencies, tsoa codegen, tsc.
-FROM node:24-slim@sha256:0e0ff40c39bc087845bfb27465a0df4ea419520094bc35842ff83dd8cbe6f9b6 AS build
+FROM node:24-slim@sha256:d6aa754f16b3197301076f047b5def2f02ea1dbbc2ca920407d46d7ec7f87b20 AS build
 WORKDIR /app
 COPY package.json package-lock.json ./
 RUN npm ci --ignore-scripts
@@ -18,7 +18,7 @@ RUN npm run build
 # bytes: node:sqlite is built in, so a native addon here is a dependency that should not be), and then the packages
 # nothing loads removed: @tsoa/runtime declares @hapi/* for its hapi adapter and @types/* for its typings, and a test
 # (runtimeTree.test.ts) boots dist/server.js and fails if either is required.
-FROM node:24-slim@sha256:0e0ff40c39bc087845bfb27465a0df4ea419520094bc35842ff83dd8cbe6f9b6 AS deps
+FROM node:24-slim@sha256:d6aa754f16b3197301076f047b5def2f02ea1dbbc2ca920407d46d7ec7f87b20 AS deps
 WORKDIR /app
 COPY package.json package-lock.json ./
 COPY scripts/find-native.cjs ./scripts/find-native.cjs
@@ -35,7 +35,7 @@ RUN npm ci --ignore-scripts --omit=dev --omit=optional \
 # Runs as root, the distroless default and what the Go image did: the existing /data/auth.db on the host volume is
 # root-owned, and a non-root process could not write it. Changing that needs a volume ownership migration and is a
 # post-cutover issue.
-FROM gcr.io/distroless/nodejs24-debian13@sha256:96df910f65fdd8a21d00d14d4cc046adcfcf3ced2d5e96be4b39ebde9f4866c6
+FROM gcr.io/distroless/nodejs24-debian13@sha256:51eee69b25037942014428da85f5b436a4d88f283e545981d03f25b7db72469a
 WORKDIR /app
 ENV NODE_ENV=production SQLITE_DB_PATH=/data/auth.db
 COPY package.json ./
