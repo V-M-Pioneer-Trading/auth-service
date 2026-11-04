@@ -105,7 +105,17 @@ assert the status, the content type and the stable prefix only.
 - **The scheduled poll cadence** (daily, hourly inside the 24 h before a
   predicted reset). It is not observable in a test that lasts seconds. What is
   covered: the poll at startup, forced polls, and the state machine.
-- **The 30 s upstream client timeout**, and the 64 KiB cap on Clerk's reply.
+- **The 30 s SpaceTraders client bound and the 64 KiB cap on Clerk's reply.**
+  This suite does not pin them; the unit tests do. The 30 s is the SpaceTraders
+  client's own bound (`UPSTREAM_TIMEOUT_MS` in `src/spacetraders/client.ts`), not
+  the server's `requestTimeout`. Pinned in
+  `src/__tests__/spacetradersClient.test.ts` (describe "the bound on an
+  exchange"), `src/__tests__/m2m.test.ts` (tests "gives up at 64 KiB without a
+  complete value, without waiting for the end or the timeout" and "accepts a
+  token whose value ends inside the first 64 KiB, whatever follows") and
+  `src/__tests__/m2mGoParity.test.ts` (describe "Clerk's answer:
+  json.NewDecoder(io.LimitReader(body, 64 KiB)).Decode", test "has the verdicts
+  of Go on every recorded body").
 - **HTTP server limits.** Go's `http.Server` here has no read, write or idle
   timeouts; none are pinned.
 - **Log wording.** Only that no credential, query-string token or request body
