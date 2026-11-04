@@ -35,7 +35,7 @@ root like the Go image did: `/data/auth.db` is root-owned.
 
 ## CI and the required checks
 
-`.github/workflows/container.yml` has four jobs. **`ts-checks`** (the dependency gate and `npm audit`), **`test`** (typecheck,
+`.github/workflows/container.yml` has five jobs. **`ts-checks`** (the dependency gate and `npm audit`), **`test`** (typecheck,
 lint, build, the `openapi.json` freshness check, Jest) and **`contract`** (the black-box suite against the image the root
 Dockerfile builds, judged by `scripts/run-contract.cjs`) are the checks branch protection requires on `main`
 (`enforce_admins` on): never rename or drop one without changing the protection in the same step, because a required check
@@ -43,6 +43,7 @@ that no job reports blocks every merge. `test` and `contract` wait for `ts-check
 the gate has not passed. **`docker`** builds the arm64 image and, on `main` only, tags `:latest` and redeploys through SSM
 (tip-of-main check, one deploy at a time); it waits for `test` and `ts-checks`, not for `contract`. A `v*` tag pushes
 `sha-<40 hex>` and never deploys: that is how a pull request's tip gets an image to deploy by hand and probe.
+**`sync-openapi`** waits for `test` and, on `main` only, publishes `openapi.json` to meta through meta's sync workflow.
 
 ## Production probe
 
@@ -91,7 +92,7 @@ host is the gate (`scripts/cutover-deploy-rc.ps1` and `scripts/cutover-hostcheck
 | golang-jwt verifyToken (with jose) | `src/jwt/verify.ts` | `verifyToken.test.ts`: 179 tokens against Go's recorded answers, deviations named |
 | `mime.ParseMediaType`, `url.ParseQuery` (ParseForm) | `src/http/goForm.ts` | `goParity.test.ts`, 64 content types and 38 queries |
 | the introspection handler, MaxBytesReader, 100-continue | `src/introspection.ts`, `src/http/body.ts` | `introspect.test.ts`; contract `introspect*.test.ts` |
-| the server-side fixture conformance test | — | `introspectionFixture.test.ts` against the vendored fixture v6, sha256-pinned |
+| the server-side fixture conformance test | — | `introspectionFixture.test.ts` against the vendored fixture v7, sha256-pinned |
 | `time.Parse(RFC3339)` / `Format` | `src/goTime.ts` | `goParity.test.ts` |
 | gorilla/mux and net/http artefacts | `src/http/muxCompat.ts`, `cors.ts`, `json.ts` | `app.test.ts`; contract `routing.test.ts` |
 | server hardening (unread bodies, timeouts, parse errors) | `src/server.ts` | `connections.test.ts` |
@@ -200,3 +201,15 @@ base)` for a Location (WHATWG reads `///h`, `/\h`, `http:\\h` as another host wh
 ---
 
 Update this file in the same PR as the change it describes.
+
+## Agent skills (heinzelwerk)
+
+- **Precedence**: for heinzelwerk team work, these pointers override any other agent-skills block in this file.
+- **Issue tracker**: GitHub issues, one tracker for the workspace in V-M-Pioneer-Trading/meta. See `docs/agents/heinzelwerk/issue-tracker.md` before creating, reading, or labelling issues.
+- **Triage labels**: the five canonical labels, defined in meta only. See `docs/agents/heinzelwerk/triage-labels.md` before applying any label.
+- **Domain docs**: multi-context workspace, one context per repo; map in `../meta/GLOSSARY-MAP.md`. Read `docs/agents/heinzelwerk/domain.md` before exploring code or naming anything.
+- **Team rules**: read `docs/agents/heinzelwerk/team.md` before any team task.
+- **Out of scope**: see `../meta/docs/agents/heinzelwerk/out-of-scope.md` before proposing or triaging discovered work.
+- **Repo map**: see `docs/agents/heinzelwerk/repo-map.md` when locating code.
+- **Learnings**: read `../meta/docs/agents/heinzelwerk/learnings.md` before starting any task.
+- **Sibling paths** (workspace mode only): `../<repo>/…` above is relative to this repo's main checkout, i.e. the workspace folder. From a task worktree (`.claude/worktrees/<x>`), resolve it as `$(cd "$(git rev-parse --git-common-dir)/../.." && pwd)/<repo>/…`.

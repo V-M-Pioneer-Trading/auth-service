@@ -238,9 +238,9 @@ The SSM parameters the bootstrap reads, and the variables they become: `AUTH_SER
   hand four more stacks the key to the route that returns the game token.
   - **Unset is legal and fails closed**: the service starts normally and the route rejects
     *every* caller with `401`, including one sending no header at all. It is deliberately not a
-    startup requirement — production has no such variable until meta#80 step 3 applies it by
-    hand, and a service that refused to boot would take the game credential down with it (the
-    2026-08-22 outage shape).
+    startup requirement of the service — a service that refused to boot would take the game
+    credential down with it (the 2026-08-22 outage shape); production's bootstrap sets it from
+    SSM `auth-service-introspection-secret` and stops before `docker run` when it is empty.
   - Setting it to the same value as `AUTH_SERVICE_SHARED_SECRET` **is** fatal at startup. That
     cannot happen by accident in production today, so failing loudly costs nothing.
 - `M2M_CALLER_SECRET_AUTOMATION_SERVICE`, `M2M_CALLER_SECRET_AI_SERVICE` — the secret each

@@ -179,11 +179,10 @@ each one is a place a "cleaner" implementation fails the contract.
     the envelope). The Clerk session gate: 401 `a bearer token is required` /
     401 `invalid or expired session` / 403 `this action requires a scope this
     session does not carry`.
-13. **Only two of the three comparisons are constant-time.** Introspect and
-    M2M use `subtle.ConstantTimeCompare` (M2M against every enabled caller,
-    without early exit). The vault's shared secret is compared with plain `!=`.
-    Not testable black-box; a port should use a constant-time compare
-    everywhere and say so.
+13. **All three comparisons are constant-time.** Introspect, M2M (against every
+    enabled caller, without early exit) and the vault's shared secret compare the
+    SHA-256 of each side with `timingSafeEqual`; Go compared the vault's with
+    plain `!=`. Not testable black-box.
 14. **Empty never matches.** An empty or unset introspection secret rejects every
     caller, including one sending an empty header. A caller whose M2M secret is
     unset is disabled and gets the same 401 as a stranger.
