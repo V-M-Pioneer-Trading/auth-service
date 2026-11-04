@@ -7,7 +7,7 @@ How heinzelwerk agents work in this repo. Mode rules (single repo vs workspace) 
 - **Worktree setup** (run once in every new task worktree): `npm ci --ignore-scripts`
 - **Checks** (validator runs every one, in order; copied from CI, quiet flags only; a status note goes after the closing backtick, never inside the span, which must run as pasted):
   - `npm run check:deps`
-  - `npm audit --audit-level=high` (red on main: V-M-Pioneer-Trading/meta#136)
+  - `npm audit --audit-level=high`
   - `npm run typecheck`
   - `npm run lint`
   - `npm run build`
